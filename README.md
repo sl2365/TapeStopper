@@ -13,6 +13,8 @@ TapeStopper is a portable Windows x64 VST3 audio effect for tape-style slowdown 
 
 The interface is inspired by the TapeStop effect by TBT (Daniel Lind) and SLowER by DiVerSe. I was unable to find any sites remaining for either, only posts made on KVR audio.
 
+![TapeStopper](screenshots/TapeStopper.jpg)
+
 ## Current version
 
 Stage 8.0 is a functional development build. The plug-in uses the EP-style slowdown/startup behaviour; the earlier experimental TD mode is intentionally not included.
