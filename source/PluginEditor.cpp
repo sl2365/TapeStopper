@@ -26,6 +26,7 @@ constexpr auto upCurveParameterId = "upCurve";
 constexpr auto driveParameterId = "drive";
 constexpr auto wowParameterId = "wow";
 constexpr auto flutterParameterId = "flutter";
+constexpr auto fluxParameterId = "flux";
 constexpr auto mixParameterId = "mix";
 constexpr auto currentPresetNameProperty = "currentPresetName";
 const juce::Identifier directionButtonProperty { "isDirectionButton" };
@@ -225,6 +226,7 @@ std::vector<juce::String> makePresetParameterIds()
         driveParameterId,
         wowParameterId,
         flutterParameterId,
+        fluxParameterId,
         mixParameterId,
         envelopeEnabledParameterId
     };
@@ -240,13 +242,14 @@ std::vector<juce::String> makePresetParameterIds()
 
 const auto presetParameterIds = makePresetParameterIds();
 
-bool isStageSixPresetParameter (const juce::String& parameterId)
+bool isBackwardCompatibleOptionalPresetParameter (const juce::String& parameterId)
 {
     return parameterId == downCurveParameterId
            || parameterId == upCurveParameterId
            || parameterId == driveParameterId
            || parameterId == wowParameterId
            || parameterId == flutterParameterId
+           || parameterId == fluxParameterId
            || parameterId == mixParameterId;
 }
 
@@ -541,7 +544,7 @@ private:
 
             if (! values.containsKey (parameterId))
             {
-                if (isStageSixPresetParameter (parameterId))
+                if (isBackwardCompatibleOptionalPresetParameter (parameterId))
                 {
                     pendingValues.emplace_back (parameter, parameter->getDefaultValue());
                     continue;
@@ -1206,8 +1209,10 @@ class EnvelopeEditorComponent final : public juce::Component,
                                       private juce::Timer
 {
 public:
-    explicit EnvelopeEditorComponent (juce::AudioProcessorValueTreeState& state)
-        : enabledValue (state.getRawParameterValue (envelopeEnabledParameterId))
+    EnvelopeEditorComponent (TapeStopperAudioProcessor& owner,
+                             juce::AudioProcessorValueTreeState& state)
+        : processor (owner),
+          enabledValue (state.getRawParameterValue (envelopeEnabledParameterId))
     {
         for (int point = 1; point < TapeStopperAudioProcessor::numEnvelopePoints - 1; ++point)
         {
@@ -1241,6 +1246,38 @@ public:
         g.fillRoundedRectangle (graph, 3.0f);
         g.setColour (juce::Colour (0xff22583a));
         g.drawRoundedRectangle (graph, 3.0f, 1.0f);
+
+        if (processor.isWaveformDisplayEnabled())
+        {
+            std::array<float, TapeStopperAudioProcessor::waveformSampleCount>
+                waveform {};
+            processor.copyWaveformSamples (waveform);
+
+            juce::Path waveformPath;
+            for (int sample = 0; sample < TapeStopperAudioProcessor::waveformSampleCount;
+                 ++sample)
+            {
+                const auto x = graph.getX() + graph.getWidth()
+                               * static_cast<float> (sample)
+                               / static_cast<float>
+                                   (TapeStopperAudioProcessor::waveformSampleCount - 1);
+                const auto y = graph.getCentreY()
+                               - juce::jlimit
+                                   (-1.0f, 1.0f,
+                                    waveform[static_cast<size_t> (sample)])
+                                     * graph.getHeight() * 0.43f;
+
+                if (sample == 0)
+                    waveformPath.startNewSubPath (x, y);
+                else
+                    waveformPath.lineTo (x, y);
+            }
+
+            g.setColour (juce::Colour (0xffff3d3d).withAlpha (0.72f));
+            g.strokePath (waveformPath, juce::PathStrokeType (1.2f));
+        }
+
+        g.setColour (juce::Colour (0xff22583a));
 
         for (int division = 1; division < TapeStopperAudioProcessor::numEnvelopePoints - 1;
              ++division)
@@ -1443,6 +1480,7 @@ private:
         repaint();
     }
 
+    TapeStopperAudioProcessor& processor;
     std::atomic<float>* enabledValue = nullptr;
     std::array<juce::RangedAudioParameter*, TapeStopperAudioProcessor::numEnvelopePoints - 2>
         xParameters {};
@@ -1463,7 +1501,8 @@ public:
                          std::function<void()> settingsChanged)
         : processor (owner), onSettingsChanged (std::move (settingsChanged))
     {
-        for (auto* button : { &fullSpeedMuteButton, &buttonDisplayButton })
+        for (auto* button : { &fullSpeedMuteButton, &buttonDisplayButton,
+                              &waveformDisplayButton })
         {
             button->setLookAndFeel (buttonLookAndFeel);
             button->setClickingTogglesState (true);
@@ -1476,16 +1515,22 @@ public:
 
         buttonDisplayButton.setColour (juce::TextButton::buttonOnColourId,
                                        juce::Colour (0xff168bd4));
+        waveformDisplayButton.setColour (juce::TextButton::buttonOnColourId,
+                                         juce::Colour (0xff168bd4));
 
         fullSpeedMuteButton.setToggleState (processor.isFullSpeedMuteEnabled(),
                                              juce::dontSendNotification);
         buttonDisplayButton.setToggleState (processor.isButtonDisplayReversed(),
                                              juce::dontSendNotification);
+        waveformDisplayButton.setToggleState (processor.isWaveformDisplayEnabled(),
+                                               juce::dontSendNotification);
 
         fullSpeedMuteButton.setTooltip
             ("Mute the dry output at full speed for send-effect use");
         buttonDisplayButton.setTooltip
             ("Swap the Play and Stop icons without changing the audio behaviour");
+        waveformDisplayButton.setTooltip
+            ("Show or hide the live output waveform behind the envelope");
 
         fullSpeedMuteButton.onClick = [this]
         {
@@ -1503,6 +1548,15 @@ public:
                 onSettingsChanged();
         };
 
+        waveformDisplayButton.onClick = [this]
+        {
+            processor.setWaveformDisplayEnabled
+                (waveformDisplayButton.getToggleState());
+            updateButtonText();
+            if (onSettingsChanged)
+                onSettingsChanged();
+        };
+
         updateButtonText();
     }
 
@@ -1510,6 +1564,7 @@ public:
     {
         fullSpeedMuteButton.setLookAndFeel (nullptr);
         buttonDisplayButton.setLookAndFeel (nullptr);
+        waveformDisplayButton.setLookAndFeel (nullptr);
     }
 
     void paint (juce::Graphics& g) override
@@ -1520,13 +1575,15 @@ public:
         g.setColour (juce::Colour (0xff343637));
         g.setFont (juce::FontOptions (12.0f, juce::Font::bold));
         g.drawText ("AUDIO", 10, 3, 170, 20, juce::Justification::centredLeft);
-        g.drawText ("DISPLAY", 10, 78, 170, 20, juce::Justification::centredLeft);
+        g.drawText ("DISPLAY", 10, 65, 170, 20, juce::Justification::centredLeft);
 
         g.setFont (juce::FontOptions (11.0f));
         g.drawFittedText ("Mutes normal full-speed output; transitions remain audible.",
                           190, 24, 164, 38, juce::Justification::centredLeft, 2);
         g.drawFittedText ("Swaps the Play and Stop icons only.",
-                          205, 100, 149, 28, juce::Justification::centredLeft, 2);
+                          205, 85, 149, 27, juce::Justification::centredLeft, 2);
+        g.drawFittedText ("Shows the live output behind the envelope.",
+                          205, 117, 149, 27, juce::Justification::centredLeft, 2);
     }
 
     void resized() override
@@ -1541,7 +1598,8 @@ public:
         };
 
         fullSpeedMuteButton.setBounds (scaled (10, 27, 170, 28));
-        buttonDisplayButton.setBounds (scaled (10, 102, 185, 28));
+        buttonDisplayButton.setBounds (scaled (10, 85, 185, 28));
+        waveformDisplayButton.setBounds (scaled (10, 117, 185, 28));
     }
 
 private:
@@ -1553,12 +1611,16 @@ private:
         buttonDisplayButton.setButtonText
             (buttonDisplayButton.getToggleState() ? "BUTTON: REVERSED"
                                                    : "BUTTON: NORMAL");
+        waveformDisplayButton.setButtonText
+            (waveformDisplayButton.getToggleState() ? "WAVEFORM: ON"
+                                                     : "WAVEFORM: OFF");
     }
 
     TapeStopperAudioProcessor& processor;
     std::function<void()> onSettingsChanged;
     juce::TextButton fullSpeedMuteButton;
     juce::TextButton buttonDisplayButton;
+    juce::TextButton waveformDisplayButton;
     static constexpr int designWidth = 364;
 };
 }
@@ -1720,7 +1782,7 @@ TapeStopperAudioProcessorEditor::TapeStopperAudioProcessorEditor (TapeStopperAud
 
     mainTrigger = std::make_unique<MainTriggerComponent> (processor);
     timingBar = std::make_unique<TimingBarComponent> (processor, state);
-    envelopeEditor = std::make_unique<EnvelopeEditorComponent> (state);
+    envelopeEditor = std::make_unique<EnvelopeEditorComponent> (processor, state);
     presetSection = std::make_unique<PresetSectionComponent> (processor);
     setupPanel = std::make_unique<SetupPanelComponent>
                  (processor, smallButtonLookAndFeel.get(), [this]
@@ -1748,7 +1810,8 @@ TapeStopperAudioProcessorEditor::TapeStopperAudioProcessorEditor (TapeStopperAud
     muteAtValueLabel.setInterceptsMouseClicks (false, false);
     addAndMakeVisible (muteAtValueLabel);
 
-    for (auto* slider : { &driveSlider, &wowSlider, &flutterSlider, &mixSlider })
+    for (auto* slider : { &driveSlider, &wowSlider, &flutterSlider,
+                          &fluxSlider, &mixSlider })
     {
         slider->setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
         slider->setLookAndFeel (muteAtLookAndFeel.get());
@@ -1759,6 +1822,7 @@ TapeStopperAudioProcessorEditor::TapeStopperAudioProcessorEditor (TapeStopperAud
     driveSlider.setTooltip ("Tape-style saturation amount");
     wowSlider.setTooltip ("Slow tape-speed variation at 0.33 Hz");
     flutterSlider.setTooltip ("Fast tape-speed variation at 6.5 Hz");
+    fluxSlider.setTooltip ("Irregular pitch and playback instability during DOWN and UP");
     mixSlider.setTooltip ("Dry and processed signal balance");
 
     driveAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>
@@ -1767,11 +1831,13 @@ TapeStopperAudioProcessorEditor::TapeStopperAudioProcessorEditor (TapeStopperAud
                     (state, wowParameterId, wowSlider);
     flutterAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>
                         (state, flutterParameterId, flutterSlider);
+    fluxAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>
+                     (state, fluxParameterId, fluxSlider);
     mixAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>
                     (state, mixParameterId, mixSlider);
 
     for (auto* label : { &driveValueLabel, &wowValueLabel,
-                         &flutterValueLabel, &mixValueLabel })
+                         &flutterValueLabel, &fluxValueLabel, &mixValueLabel })
     {
         label->setColour (juce::Label::textColourId, juce::Colour (0xff343637));
         label->setFont (juce::FontOptions (11.0f, juce::Font::bold));
@@ -1821,6 +1887,7 @@ TapeStopperAudioProcessorEditor::~TapeStopperAudioProcessorEditor()
     driveSlider.setLookAndFeel (nullptr);
     wowSlider.setLookAndFeel (nullptr);
     flutterSlider.setLookAndFeel (nullptr);
+    fluxSlider.setLookAndFeel (nullptr);
     mixSlider.setLookAndFeel (nullptr);
 }
 
@@ -1855,6 +1922,7 @@ void TapeStopperAudioProcessorEditor::savePortableSettings()
                                (100.0f * static_cast<float> (getWidth()) / designWidth);
     settings.fullSpeedMute = processor.isFullSpeedMuteEnabled();
     settings.reversedButtonDisplay = processor.isButtonDisplayReversed();
+    settings.waveformDisplay = processor.isWaveformDisplayEnabled();
     settings.save();
 }
 
@@ -1928,6 +1996,8 @@ void TapeStopperAudioProcessorEditor::updateBottomControlText()
                            juce::dontSendNotification);
     flutterValueLabel.setText (percentageText (flutterParameterId, "FLUTTER"),
                                juce::dontSendNotification);
+    fluxValueLabel.setText (percentageText (fluxParameterId, "FLUX"),
+                            juce::dontSendNotification);
     mixValueLabel.setText (percentageText (mixParameterId, "MIX"),
                            juce::dontSendNotification);
 }
@@ -2027,17 +2097,19 @@ void TapeStopperAudioProcessorEditor::resized()
     downCurveButton.setBounds (scaled (20, 240, 128, 29));
     upCurveButton.setBounds (scaled (156, 240, 128, 29));
 
-    driveSlider.setBounds (scaled (311, 223, 70, 43));
-    wowSlider.setBounds (scaled (435, 223, 70, 43));
-    flutterSlider.setBounds (scaled (559, 223, 70, 43));
-    mixSlider.setBounds (scaled (683, 223, 70, 43));
+    driveSlider.setBounds (scaled (289, 223, 62, 43));
+    wowSlider.setBounds (scaled (388, 223, 62, 43));
+    flutterSlider.setBounds (scaled (487, 223, 62, 43));
+    fluxSlider.setBounds (scaled (586, 223, 62, 43));
+    mixSlider.setBounds (scaled (685, 223, 62, 43));
 
     for (auto* label : { &driveValueLabel, &wowValueLabel,
-                         &flutterValueLabel, &mixValueLabel })
+                         &flutterValueLabel, &fluxValueLabel, &mixValueLabel })
         label->setFont (juce::FontOptions (11.0f * scale, juce::Font::bold));
 
-    driveValueLabel.setBounds (scaled (291, 266, 110, 16));
-    wowValueLabel.setBounds (scaled (415, 266, 110, 16));
-    flutterValueLabel.setBounds (scaled (539, 266, 110, 16));
-    mixValueLabel.setBounds (scaled (663, 266, 110, 16));
+    driveValueLabel.setBounds (scaled (273, 266, 94, 16));
+    wowValueLabel.setBounds (scaled (372, 266, 94, 16));
+    flutterValueLabel.setBounds (scaled (471, 266, 94, 16));
+    fluxValueLabel.setBounds (scaled (570, 266, 94, 16));
+    mixValueLabel.setBounds (scaled (669, 266, 94, 16));
 }

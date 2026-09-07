@@ -43,11 +43,13 @@ private:
     juce::Slider driveSlider;
     juce::Slider wowSlider;
     juce::Slider flutterSlider;
+    juce::Slider fluxSlider;
     juce::Slider mixSlider;
     juce::Label muteAtValueLabel;
     juce::Label driveValueLabel;
     juce::Label wowValueLabel;
     juce::Label flutterValueLabel;
+    juce::Label fluxValueLabel;
     juce::Label mixValueLabel;
 
     std::unique_ptr<juce::Component> mainTrigger;
@@ -62,6 +64,7 @@ private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> driveAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> wowAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> flutterAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> fluxAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> mixAttachment;
 
     int observedEditorWidth = 0;

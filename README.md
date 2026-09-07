@@ -9,13 +9,13 @@
 [![Commits Since Release](https://img.shields.io/github/commits-since/sl2365/TapeStopper/latest?style=for-the-badge-square&logo=github&logoColor=white&color=green)](https://github.com/sl2365/TapeStopper/activity)
 [![Last Commit](https://img.shields.io/github/last-commit/sl2365/TapeStopper?style=for-the-badge-square&logo=github&logoColor=white&color=green)](https://github.com/sl2365/TapeStopper/activity)
 
-TapeStopper is a portable Windows x64 VST3 audio effect for tape-style slowdown and startup transitions. It combines independently timed DOWN and UP motion with tempo sync, an editable downward pitch envelope, transition curves, saturation, wow, flutter, wet/dry mix, threshold muting and portable user presets.
+TapeStopper is a portable Windows x64 VST3 audio effect for tape-style slowdown and startup transitions. It combines independently timed DOWN and UP motion with tempo sync, an editable downward pitch envelope, a live waveform display, transition curves, saturation, wow, flutter, irregular flux instability, wet/dry mix, threshold muting and portable user presets.
 
-The interface is inspired by the compact horizontal layout of classic tape-stop effects while providing a larger, resizable editor and modern VST3 parameter handling.
+The interface is inspired by the TapeStop effect by TBT (Daniel Lind) and SLowER by DiVerSe. I was unable to find any sites remaining for either, only posts made on KVR audio.
 
 ## Current version
 
-Stage 6.1 is a functional development build. The plug-in uses the EP-style slowdown/startup behaviour; the earlier experimental TD mode is intentionally not included.
+Stage 8.0 is a functional development build. The plug-in uses the EP-style slowdown/startup behaviour; the earlier experimental TD mode is intentionally not included.
 
 ## Features
 
@@ -27,8 +27,10 @@ Stage 6.1 is a functional development build. The plug-in uses the EP-style slowd
 - Host-tempo SYNC timing from 4 bars to 1/64 notes.
 - Independent Linear, Gentle, Steep and S-Curve transition shapes.
 - Editable 11-point downward pitch envelope with a range of -12 to +12 semitones.
+- Optional red live-output waveform behind the envelope graph.
 - Adjustable Mute At transition threshold.
 - Tape-style Drive, Wow and Flutter controls.
+- Strong FLUX control for irregular pitch warble and playback errors during DOWN and UP. It fluctuates around the envelope-shaped pitch when the envelope is enabled, or around the normal tape curve when it is bypassed.
 - Dry/processed Mix control.
 - Full Speed Mute option for send-effect use.
 - Normal or Reversed main-button icon display.
@@ -51,7 +53,7 @@ The green DOWN marker and red UP marker can be adjusted only on the timing track
 
 ## Timing modes
 
-In FREE mode, the two timing markers select continuous transition times between 0.05 and 8.00 seconds. Moving a marker left produces a longer transition; moving it right produces a shorter transition.
+In FREE mode, the two timing markers select continuous transition times between 0.05 and 8.00 seconds. Moving a marker left produces a longer/slower transition; moving it right produces a shorter/faster transition.
 
 In SYNC mode, the markers snap independently to:
 
@@ -87,7 +89,7 @@ Portable editor and Setup options are saved in:
 Data\Settings.ini
 ```
 
-This stores the editor scale, Full Speed Mute setting and Normal/Reversed button display choice. No settings or presets are written to the Windows user profile.
+This stores the editor scale, Full Speed Mute setting, Normal/Reversed button display choice and Waveform display choice. No settings or presets are written to the Windows user profile.
 
 ## Building
 
@@ -118,4 +120,3 @@ The build creates a portable single-file Windows x64 VST3 and preserves an exist
 ## Development status
 
 TapeStopper is still under development. Its bundle ID and four-character VST identity codes are provisional and should be replaced with permanent approved identifiers before a compatibility-sensitive public release. Changing those identifiers later will cause hosts to recognise the plug-in as a different product.
-

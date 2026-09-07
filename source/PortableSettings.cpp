@@ -85,6 +85,10 @@ TapeStopperPortableSettings TapeStopperPortableSettings::load()
                 settings.guiScalePercent = juce::jlimit (75, 200, value.getIntValue());
             else if (key.equalsIgnoreCase ("ButtonDisplay"))
                 settings.reversedButtonDisplay = value.equalsIgnoreCase ("Reversed");
+            else if (key.equalsIgnoreCase ("WaveformDisplay"))
+                settings.waveformDisplay = value.getIntValue() != 0
+                                           || value.equalsIgnoreCase ("On")
+                                           || value.equalsIgnoreCase ("True");
         }
         else if (section.equalsIgnoreCase ("Audio")
                  && key.equalsIgnoreCase ("FullSpeedMute"))
@@ -113,6 +117,8 @@ bool TapeStopperPortableSettings::save() const
          << "[GUI]\r\n"
          << "ScalePercent=" << juce::jlimit (75, 200, guiScalePercent) << "\r\n"
          << "ButtonDisplay=" << (reversedButtonDisplay ? "Reversed" : "Normal")
+         << "\r\n"
+         << "WaveformDisplay=" << (waveformDisplay ? "On" : "Off")
          << "\r\n\r\n"
          << "[Audio]\r\n"
          << "FullSpeedMute=" << (fullSpeedMute ? 1 : 0) << "\r\n";

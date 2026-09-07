@@ -3,6 +3,7 @@
 #include <JuceHeader.h>
 #include <array>
 #include <atomic>
+#include <cstdint>
 #include <vector>
 
 class TapeStopperAudioProcessor final : public juce::AudioProcessor
@@ -46,8 +47,13 @@ public:
     MotionDirection getMotionDirection() const noexcept;
     bool isFullSpeedMuteEnabled() const noexcept;
     bool isButtonDisplayReversed() const noexcept;
+    bool isWaveformDisplayEnabled() const noexcept;
     void setFullSpeedMuteEnabled (bool enabled) noexcept;
     void setButtonDisplayReversed (bool reversed) noexcept;
+    void setWaveformDisplayEnabled (bool enabled) noexcept;
+    static constexpr int waveformSampleCount = 256;
+    void copyWaveformSamples
+        (std::array<float, waveformSampleCount>& destination) const noexcept;
 
     static float speedControlToSeconds (float controlValue) noexcept;
     static float syncDivisionToSeconds (int divisionIndex, float bpm) noexcept;
@@ -73,6 +79,7 @@ private:
     void advanceMotionState();
     float readTapeSample (int channel) const noexcept;
     float readCharacterSample (int channel, double delayInSamples) const noexcept;
+    float nextFluxRandomUnit() noexcept;
 
     juce::AudioProcessorValueTreeState parameters;
 
@@ -90,8 +97,15 @@ private:
     float currentDriveAmount = 0.0f;
     float currentWowAmount = 0.0f;
     float currentFlutterAmount = 0.0f;
+    float currentFluxAmount = 0.0f;
     float currentMixAmount = 1.0f;
     float characterSmoothingAmount = 1.0f;
+
+    float currentFluxVariation = 0.0f;
+    float targetFluxVariation = 0.0f;
+    float fluxVariationSmoothingAmount = 1.0f;
+    int fluxTargetSamplesRemaining = 0;
+    std::uint32_t fluxRandomState = 0x7f4a7c15u;
 
     MotionState motionState = MotionState::fullSpeed;
     float currentSpeed = 1.0f;
@@ -114,6 +128,11 @@ private:
     std::atomic<float> currentBpm { 120.0f };
     std::atomic<bool> fullSpeedMuteEnabled { false };
     std::atomic<bool> buttonDisplayReversed { false };
+    std::atomic<bool> waveformDisplayEnabled { true };
+    std::array<std::atomic<float>, waveformSampleCount> waveformSamples {};
+    std::atomic<int> waveformWritePosition { 0 };
+    int waveformCaptureInterval = 1;
+    int waveformSamplesUntilCapture = 1;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TapeStopperAudioProcessor)
 };
