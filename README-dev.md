@@ -1,8 +1,8 @@
-# TapeStopper - Stage 6.1
+# TapeStopper - Stage 8.0
 
 This is the first functional Windows x64 VST3 stage.
 
-## Stage 6.1 behaviour
+## Stage 8.0 behaviour
 
 - Builds a native Windows x64 VST3 audio effect with C++17 and JUCE 8.0.15.
 - Passes audio through unchanged at full speed when the new tape-character controls are at their neutral defaults.
@@ -21,7 +21,7 @@ This is the first functional Windows x64 VST3 stage.
 - Draws Mute At as a custom cyan-to-deep-blue knob matching the main Play button.
 - Adds Full Speed Mute for send-effect use, with a short smoothed transition into and out of silence.
 - Adds Normal/Reversed Play-button display without changing the trigger behaviour.
-- Saves GUI scale, Full Speed Mute and button display mode in the portable `Data\Settings.ini` file.
+- Saves GUI scale, Full Speed Mute, button display mode and waveform display mode in the portable `Data\Settings.ini` file.
 - Makes the PLAY triangle slightly narrower and rounds its three corners.
 - Implements independently adjustable green Down and red Up speed markers.
 - Extends the FREE timing range from 0.05 to 8.00 seconds.
@@ -32,12 +32,17 @@ This is the first functional Windows x64 VST3 stage.
 - Shows seconds below the timing bar in FREE mode and the selected divisions in SYNC mode.
 - Restricts timing-marker clicks and drags to the visible slider track; the DOWN/UP time readout below it is non-interactive.
 - Retains the continuous Free values separately when switching between timing modes.
-- Replaces the former bottom information text with working Down Curve, Up Curve, Drive, Wow, Flutter and Mix controls.
+- Replaces the former bottom information text with working Down Curve, Up Curve, Drive, Wow, Flutter, Flux and Mix controls.
 - Provides independent Linear, Gentle, Steep and S-Curve shapes for downward and upward transitions.
 - Adds smoothly adjustable tape-style saturation with Drive from 0%-100%.
 - Adds slow 0.33 Hz Wow and faster 6.5 Hz Flutter using smoothly blended variable-delay modulation.
+- Adds a 0%-100% Flux control that applies smoothly changing random pitch instability and occasional stronger playback errors during Down and Up only.
+- Applies Flux as relative pitch instability after the optional envelope pitch calculation: it follows the envelope when On and the normal tape curve when Off.
+- Raises maximum Flux pitch depth to approximately 2.5 times the Stage 7.0 range, based on comparison recordings.
+- Uses a shared Flux movement for both channels, avoiding unwanted stereo-image wandering.
+- Safely clamps the final envelope-plus-Flux tape speed so the read head cannot overtake the live write head.
 - Adds a 0%-100% dry/processed Mix control.
-- Preserves the established sound by defaulting both curves to Linear, Drive/Wow/Flutter to 0% and Mix to 100%.
+- Preserves the established sound by defaulting both curves to Linear, Drive/Wow/Flutter/Flux to 0% and Mix to 100%.
 - Retains EP as the fixed slowdown/startup engine while the former TD mode remains deferred.
 - Adds an ENVELOPE ON/OFF button and an editable 11-point envelope for downward motion.
 - Locks the first and last envelope points horizontally while allowing vertical pitch adjustment.
@@ -46,6 +51,8 @@ This is the first functional Windows x64 VST3 stage.
 - Adds ENV RESET to return all eleven pitch points to zero semitones while preserving their time positions.
 - Makes the envelope graph a few pixels taller while retaining its rounded corners and timing-bar alignment.
 - Aligns the rounded envelope graph with the start and end positions of the blue timing indicator.
+- Draws a rolling red waveform of the final audible output behind the envelope, using a lock-free audio-to-editor capture buffer.
+- Adds a blue-highlighted WAVEFORM ON/OFF option to Setup and stops waveform capture entirely when it is Off.
 - Applies a neutral-centred pitch offset from -12 to +12 semitones around the normal downward tape curve.
 - Safely limits positive modulation at normal playback speed so the read head cannot overtake live input.
 - Defaults the envelope to a neutral flat line and OFF, preserving the Stage 3 sound until enabled.
@@ -59,9 +66,9 @@ This is the first functional Windows x64 VST3 stage.
 - Allows NAME to rename a saved preset; when INIT is selected it creates a newly named preset instead.
 - Saves portable preset files to `Data\Presets` beside the loaded VST3 and scans that folder whenever its list is opened or stepped.
 - Stores every sound/control parameter and all envelope points in a preset, while excluding the transient main Play state and the global Setup options.
-- Includes all six new bottom-panel parameters in saved presets and loads Stage 5.x presets with safe defaults for them.
+- Includes all seven bottom-panel parameters in saved presets and loads Stage 5.x/6.x presets with safe defaults for newer controls.
 - Retains the current preset name in DAW project state.
-- Saves and restores the Stage 6.1 parameters and all envelope points in DAW project state.
+- Saves and restores the Stage 8.0 parameters and all envelope points in DAW project state.
 - Opens at 800 x 300 pixels and resizes from 600 x 225 through 1600 x 600 while preserving the aspect ratio.
 - Creates `Data\Settings.ini` beside the portable VST3 and restores the last GUI scale when the editor is reopened.
 - Produces the portable single-file output `dist\TapeStopper.vst3`.
@@ -72,7 +79,7 @@ TD mode is intentionally deferred while the envelope is evaluated. Setup continu
 
 ## Provisional identity warning
 
-The Stage 6.1 bundle ID and four-character VST identity codes are development placeholders. They must be replaced with approved permanent identifiers before any public build. Changing them later will make hosts see the permanent build as a different plug-in, so Stage 6.1 must not be treated as a compatibility release.
+The Stage 8.0 bundle ID and four-character VST identity codes are development placeholders. They must be replaced with approved permanent identifiers before any public build. Changing them later will make hosts see the permanent build as a different plug-in, so Stage 8.0 must not be treated as a compatibility release.
 
 ## Build
 
