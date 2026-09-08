@@ -1,8 +1,8 @@
-# TapeStopper - Stage 11.4
+# TapeStopper - Stage 11.5
 
 This is the first functional Windows x64 VST3 stage.
 
-## Stage 11.4 behaviour
+## Stage 11.5 behaviour
 
 - Builds a native Windows x64 VST3 audio effect with C++17 and JUCE 8.0.15.
 - Passes audio through unchanged at full speed when the new tape-character controls are at their neutral defaults.
@@ -105,7 +105,7 @@ This is the first functional Windows x64 VST3 stage.
 - Centres the SEQ button and LED vertically in the bottom panel and increases the horizontal gap between them.
 - Narrows the four graph-tab buttons while preserving each LED-to-button gap and adding clearer spacing between neighbouring pairs.
 - Makes all five sequencer controls the same width and doubles the space between them for a more consistent control row.
-- Saves and restores the Stage 11.4 parameters, curves, Envelope points and sequencer pattern in DAW project state. RETRIG remains a transient action rather than a preset value.
+- Saves and restores the Stage 11.5 parameters, curves, Envelope points and sequencer pattern in DAW project state. RETRIG remains a transient action rather than a preset value.
 - Opens at 800 x 300 pixels and resizes from 600 x 225 through 1600 x 600 while preserving the aspect ratio.
 - Creates `Data\Settings.ini` beside the portable VST3 and restores the last GUI scale when the editor is reopened.
 - Produces the portable single-file output `dist\TapeStopper.vst3`.
@@ -114,9 +114,11 @@ This is the first functional Windows x64 VST3 stage.
 
 TD mode is intentionally deferred while the envelope is evaluated. Setup continues to use the requested toggleable middle-panel view rather than a separate window.
 
-## Provisional identity warning
+## Permanent plug-in identity
 
-The Stage 11.4 bundle ID and four-character VST identity codes are development placeholders. They must be replaced with approved permanent identifiers before any public build. Changing them later will make hosts see the permanent build as a different plug-in, so Stage 11.4 must not be treated as a compatibility release.
+Stage 11.5 replaces the development placeholders with Manufacturer `sl23`, Manufacturer Code `sl23`, Plug-in Code `TpSt` and Bundle ID `com.sl23.tapestopper`. `TpSt` is derived from TapeStopper and is unique among the plug-ins visible in this workspace. These values are permanent and must remain stable for the lifetime of the plug-in.
+
+Hosts will recognise Stage 11.5 as a different plug-in from builds using the earlier provisional identity. Saved projects containing a provisional build will not automatically substitute Stage 11.5.
 
 ## Build
 

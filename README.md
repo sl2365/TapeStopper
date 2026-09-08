@@ -152,4 +152,4 @@ The build creates a portable single-file Windows x64 VST3 and preserves an exist
 
 ## Development status
 
-TapeStopper is still under development. Its bundle ID and four-character VST identity codes are provisional and should be replaced with permanent approved identifiers before a compatibility-sensitive public release. Changing those identifiers later will cause hosts to recognise the plug-in as a different product.
+TapeStopper uses Manufacturer `sl23`, Manufacturer Code `sl23`, Plug-in Code `TpSt` and Bundle ID `com.sl23.tapestopper`. These identifiers are permanent and must remain unchanged in future releases.
