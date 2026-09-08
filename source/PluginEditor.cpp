@@ -21,16 +21,31 @@ constexpr auto timingModeParameterId = "timingMode";
 constexpr auto downSyncDivisionParameterId = "downSyncDivision";
 constexpr auto upSyncDivisionParameterId = "upSyncDivision";
 constexpr auto envelopeEnabledParameterId = "envelopeEnabled";
-constexpr auto downCurveParameterId = "downCurve";
-constexpr auto upCurveParameterId = "upCurve";
+constexpr auto pitchCurveEnabledParameterId = "pitchCurveEnabled";
+constexpr auto filterCurveEnabledParameterId = "filterCurveEnabled";
+constexpr auto volumeCurveEnabledParameterId = "volumeCurveEnabled";
+constexpr auto filterAmountParameterId = "filterAmount";
+constexpr auto volumeAmountParameterId = "volumeAmount";
 constexpr auto driveParameterId = "drive";
 constexpr auto wowParameterId = "wow";
 constexpr auto flutterParameterId = "flutter";
 constexpr auto fluxParameterId = "flux";
 constexpr auto mixParameterId = "mix";
+constexpr auto sequencerEnabledParameterId = "sequencerEnabled";
+constexpr auto sequencerClockModeParameterId = "sequencerClockMode";
+constexpr auto sequencerResolutionParameterId = "sequencerResolution";
+constexpr auto sequencerFreeRateParameterId = "sequencerFreeRate";
+constexpr auto sequencerLengthParameterId = "sequencerLength";
+constexpr auto sequencerOffsetParameterId = "sequencerOffset";
 constexpr auto currentPresetNameProperty = "currentPresetName";
 const juce::Identifier directionButtonProperty { "isDirectionButton" };
 const juce::Identifier settingsCogProperty { "isSettingsCog" };
+const juce::Identifier largerButtonTextProperty { "hasLargerButtonText" };
+
+juce::Colour presetButtonBackgroundColour() noexcept
+{
+    return juce::Colour (0xffdadad5);
+}
 
 juce::String envelopeXParameterId (int pointIndex)
 {
@@ -40,6 +55,18 @@ juce::String envelopeXParameterId (int pointIndex)
 juce::String envelopeYParameterId (int pointIndex)
 {
     return "envY" + juce::String (pointIndex);
+}
+
+juce::String curvePointParameterId (const juce::String& target,
+                                    const juce::String& direction,
+                                    int pointIndex)
+{
+    return target + direction + "Curve" + juce::String (pointIndex + 1);
+}
+
+juce::String sequencerStepParameterId (int stepIndex)
+{
+    return "seqStep" + juce::String (stepIndex + 1);
 }
 
 class TapeStopButtonLookAndFeel final : public juce::LookAndFeel_V4
@@ -100,7 +127,8 @@ public:
         {
             const auto area = button.getLocalBounds().toFloat();
             const auto centre = area.getCentre();
-            const auto outerRadius = juce::jmin (area.getWidth(), area.getHeight()) * 0.31f;
+            const auto outerRadius = juce::jmin (area.getWidth(), area.getHeight())
+                                     * 0.342105f;
             const auto innerRadius = outerRadius * 0.73f;
             juce::Path cog;
 
@@ -128,7 +156,7 @@ public:
                                                     outerRadius * 0.70f)
                                 .withCentre (centre));
 
-            auto cogColour = juce::Colours::white;
+            auto cogColour = juce::Colour (0xffd7d9d9);
             if (isButtonDown)
                 cogColour = cogColour.withAlpha (0.68f);
             else if (isMouseOverButton)
@@ -139,7 +167,10 @@ public:
             return;
         }
 
-        g.setFont (juce::FontOptions (12.0f, juce::Font::bold));
+        const auto useLargerText = static_cast<bool>
+            (button.getProperties().getWithDefault (largerButtonTextProperty, false));
+        g.setFont (juce::FontOptions (useLargerText ? 13.5f : 12.0f,
+                                      juce::Font::bold));
         g.drawFittedText (button.getButtonText(), button.getLocalBounds().reduced (5, 2),
                           juce::Justification::centred, 1);
     }
@@ -221,21 +252,40 @@ std::vector<juce::String> makePresetParameterIds()
         timingModeParameterId,
         downSyncDivisionParameterId,
         upSyncDivisionParameterId,
-        downCurveParameterId,
-        upCurveParameterId,
+        pitchCurveEnabledParameterId,
+        filterCurveEnabledParameterId,
+        volumeCurveEnabledParameterId,
+        filterAmountParameterId,
+        volumeAmountParameterId,
         driveParameterId,
         wowParameterId,
         flutterParameterId,
         fluxParameterId,
         mixParameterId,
-        envelopeEnabledParameterId
+        envelopeEnabledParameterId,
+        sequencerEnabledParameterId,
+        sequencerClockModeParameterId,
+        sequencerResolutionParameterId,
+        sequencerFreeRateParameterId,
+        sequencerLengthParameterId,
+        sequencerOffsetParameterId
     };
+
+    for (const auto& target : { juce::String ("pitch"), juce::String ("filter"),
+                                juce::String ("volume") })
+        for (const auto& direction : { juce::String ("Down"), juce::String ("Up") })
+            for (int point = 0; point < TapeStopperAudioProcessor::numCurveControlPoints;
+                 ++point)
+                ids.push_back (curvePointParameterId (target, direction, point));
 
     for (int point = 1; point < TapeStopperAudioProcessor::numEnvelopePoints - 1; ++point)
         ids.push_back (envelopeXParameterId (point));
 
     for (int point = 0; point < TapeStopperAudioProcessor::numEnvelopePoints; ++point)
         ids.push_back (envelopeYParameterId (point));
+
+    for (int step = 0; step < TapeStopperAudioProcessor::numSequencerSteps; ++step)
+        ids.push_back (sequencerStepParameterId (step));
 
     return ids;
 }
@@ -244,9 +294,7 @@ const auto presetParameterIds = makePresetParameterIds();
 
 bool isBackwardCompatibleOptionalPresetParameter (const juce::String& parameterId)
 {
-    return parameterId == downCurveParameterId
-           || parameterId == upCurveParameterId
-           || parameterId == driveParameterId
+    return parameterId == driveParameterId
            || parameterId == wowParameterId
            || parameterId == flutterParameterId
            || parameterId == fluxParameterId
@@ -303,7 +351,7 @@ public:
                       bool isButtonDown) override
     {
         auto bounds = getLocalBounds().toFloat().reduced (0.5f);
-        auto background = juce::Colour (0xffdadad5);
+        auto background = presetButtonBackgroundColour();
 
         if (isMouseOverButton)
             background = background.brighter (0.10f);
@@ -315,9 +363,9 @@ public:
         g.setColour (juce::Colour (0xff686864));
         g.drawRoundedRectangle (bounds, 1.5f, 1.0f);
         g.setColour (juce::Colour (0xff242424));
-        g.setFont (juce::FontOptions (getHeight() * 0.44f, juce::Font::bold));
+        g.setFont (juce::FontOptions (getHeight() * 0.58f, juce::Font::bold));
         g.drawFittedText (getButtonText(), getLocalBounds().reduced (1, 0),
-                          juce::Justification::centred, 1, 0.70f);
+                          juce::Justification::centred, 1, 0.82f);
     }
 };
 
@@ -336,7 +384,7 @@ public:
     void paint (juce::Graphics& g) override
     {
         auto bounds = getLocalBounds().toFloat().reduced (0.5f);
-        g.setColour (juce::Colour (0xffedede8));
+        g.setColour (presetButtonBackgroundColour());
         g.fillRoundedRectangle (bounds, 1.8f);
         g.setColour (juce::Colour (0xff686864));
         g.drawRoundedRectangle (bounds, 1.8f, 1.0f);
@@ -610,7 +658,7 @@ private:
         contents << "; TapeStopper user preset\r\n"
                  << "[TapeStopperPreset]\r\n"
                  << "Name=" << presetName << "\r\n"
-                 << "FormatVersion=2\r\n";
+                 << "FormatVersion=5\r\n";
 
         auto& parameterState = processor.getValueTreeState();
         for (const auto& parameterId : presetParameterIds)
@@ -919,7 +967,11 @@ public:
     void paint (juce::Graphics& g) override
     {
         const auto bounds = getLocalBounds().toFloat().reduced (2.0f);
-        const auto engaged = engageParameter != nullptr && engageParameter->getValue() >= 0.5f;
+        const auto manualEngaged = engageParameter != nullptr
+                                   && engageParameter->getValue() >= 0.5f;
+        const auto sequencerControlling = processor.getCurrentSequencerStep() >= 0;
+        const auto engaged = sequencerControlling
+                                 ? processor.isSequencerGateActive() : manualEngaged;
         const auto hoverLift = isMouseOver() ? 0.10f : 0.0f;
 
         juce::ColourGradient fill (juce::Colour (0xff5bd4ff).brighter (hoverLift),
@@ -978,7 +1030,8 @@ public:
 
     void mouseDown (const juce::MouseEvent& event) override
     {
-        if (! event.mods.isLeftButtonDown() || engageParameter == nullptr)
+        if (! event.mods.isLeftButtonDown() || engageParameter == nullptr
+            || processor.getCurrentSequencerStep() >= 0)
             return;
 
         engageParameter->beginChangeGesture();
@@ -1211,8 +1264,7 @@ class EnvelopeEditorComponent final : public juce::Component,
 public:
     EnvelopeEditorComponent (TapeStopperAudioProcessor& owner,
                              juce::AudioProcessorValueTreeState& state)
-        : processor (owner),
-          enabledValue (state.getRawParameterValue (envelopeEnabledParameterId))
+        : processor (owner)
     {
         for (int point = 1; point < TapeStopperAudioProcessor::numEnvelopePoints - 1; ++point)
         {
@@ -1228,6 +1280,38 @@ public:
                 = state.getParameter (envelopeYParameterId (point));
             yValues[static_cast<size_t> (point)]
                 = state.getRawParameterValue (envelopeYParameterId (point));
+        }
+
+        const std::array<juce::String, 3> targetNames
+            { juce::String ("pitch"), juce::String ("filter"),
+              juce::String ("volume") };
+        for (int target = 0; target < 3; ++target)
+            for (int direction = 0; direction < 2; ++direction)
+                for (int point = 0;
+                     point < TapeStopperAudioProcessor::numCurveControlPoints; ++point)
+                {
+                    const auto parameterId = curvePointParameterId
+                        (targetNames[static_cast<size_t> (target)],
+                         direction == 0 ? "Down" : "Up", point);
+                    curveParameters[static_cast<size_t> (target)]
+                                   [static_cast<size_t> (direction)]
+                                   [static_cast<size_t> (point)]
+                        = state.getParameter (parameterId);
+                    curveValues[static_cast<size_t> (target)]
+                               [static_cast<size_t> (direction)]
+                               [static_cast<size_t> (point)]
+                        = state.getRawParameterValue (parameterId);
+                }
+
+        const std::array<const char*, 4> enabledIds
+            { pitchCurveEnabledParameterId, filterCurveEnabledParameterId,
+              volumeCurveEnabledParameterId, envelopeEnabledParameterId };
+        for (int view = 0; view < 4; ++view)
+        {
+            enabledParameters[static_cast<size_t> (view)]
+                = state.getParameter (enabledIds[static_cast<size_t> (view)]);
+            enabledValues[static_cast<size_t> (view)]
+                = state.getRawParameterValue (enabledIds[static_cast<size_t> (view)]);
         }
 
         setMouseCursor (juce::MouseCursor::CrosshairCursor);
@@ -1254,85 +1338,205 @@ public:
             processor.copyWaveformSamples (waveform);
 
             juce::Path waveformPath;
+            auto pathActive = false;
             for (int sample = 0; sample < TapeStopperAudioProcessor::waveformSampleCount;
                  ++sample)
             {
+                const auto speed = waveform[static_cast<size_t> (sample)];
+                if (speed < 0.0f)
+                {
+                    pathActive = false;
+                    continue;
+                }
+
                 const auto x = graph.getX() + graph.getWidth()
                                * static_cast<float> (sample)
                                / static_cast<float>
                                    (TapeStopperAudioProcessor::waveformSampleCount - 1);
-                const auto y = graph.getCentreY()
-                               - juce::jlimit
-                                   (-1.0f, 1.0f,
-                                    waveform[static_cast<size_t> (sample)])
-                                     * graph.getHeight() * 0.43f;
+                const auto y = graph.getBottom() - 2.0f
+                               - juce::jlimit (0.0f, 1.0f, speed)
+                                     * (graph.getHeight() - 4.0f);
 
-                if (sample == 0)
+                if (! pathActive)
+                {
                     waveformPath.startNewSubPath (x, y);
+                    pathActive = true;
+                }
                 else
                     waveformPath.lineTo (x, y);
             }
 
             g.setColour (juce::Colour (0xffff3d3d).withAlpha (0.72f));
-            g.strokePath (waveformPath, juce::PathStrokeType (1.2f));
+            g.strokePath (waveformPath, juce::PathStrokeType (1.6f));
         }
 
-        g.setColour (juce::Colour (0xff22583a));
-
-        for (int division = 1; division < TapeStopperAudioProcessor::numEnvelopePoints - 1;
-             ++division)
+        const auto viewColour = getViewColour (selectedView);
+        const auto verticalDivisions = selectedView == envelopeView
+                                           ? TapeStopperAudioProcessor::numEnvelopePoints - 1
+                                           : TapeStopperAudioProcessor::numCurveControlPoints + 1;
+        g.setColour (viewColour.darker (0.58f).withAlpha (0.70f));
+        for (int division = 1; division < verticalDivisions; ++division)
         {
             const auto x = graph.getX() + graph.getWidth()
                            * static_cast<float> (division)
-                           / static_cast<float> (TapeStopperAudioProcessor::numEnvelopePoints - 1);
+                           / static_cast<float> (verticalDivisions);
             g.drawVerticalLine (juce::roundToInt (x), graph.getY(), graph.getBottom());
         }
-
-        g.setColour (juce::Colour (0xff34764e));
-        g.drawLine (graph.getX(), graph.getCentreY(), graph.getRight(),
-                    graph.getCentreY(), 1.4f);
-
-        std::array<juce::Point<float>, TapeStopperAudioProcessor::numEnvelopePoints> points;
-        for (int point = 0; point < TapeStopperAudioProcessor::numEnvelopePoints; ++point)
-            points[static_cast<size_t> (point)] = getPointPosition (point, graph);
-
-        juce::Path curve;
-        curve.startNewSubPath (points.front());
-        for (int point = 1; point < TapeStopperAudioProcessor::numEnvelopePoints; ++point)
-            curve.lineTo (points[static_cast<size_t> (point)]);
-
-        const auto isEnabled = enabledValue != nullptr && enabledValue->load() >= 0.5f;
-        g.setColour (juce::Colour (0xff49ff70).withAlpha (isEnabled ? 1.0f : 0.48f));
-        g.strokePath (curve, juce::PathStrokeType (2.0f));
-
-        for (int point = 0; point < TapeStopperAudioProcessor::numEnvelopePoints; ++point)
+        for (int division = 1; division < 4; ++division)
         {
-            const auto size = point == activePoint ? 8.0f : 6.0f;
-            const auto handle = juce::Rectangle<float> (size, size)
-                                    .withCentre (points[static_cast<size_t> (point)]);
-            g.setColour (point == activePoint ? juce::Colour (0xffffff72)
-                                              : juce::Colour (0xffb9ffc8));
-            g.fillRect (handle);
-            g.setColour (juce::Colour (0xff0a3317));
-            g.drawRect (handle, 1.0f);
+            const auto y = graph.getY() + graph.getHeight()
+                           * static_cast<float> (division) / 4.0f;
+            g.drawHorizontalLine (juce::roundToInt (y), graph.getX(), graph.getRight());
         }
 
-        if (activePoint >= 0)
+        const auto selectedEnabled = isViewEnabled (selectedView);
+        const auto curveAlpha = selectedEnabled ? 1.0f : 0.42f;
+
+        if (selectedView == envelopeView)
         {
-            const auto semitones = (0.5f - getPointY (activePoint)) * 24.0f;
-            const auto prefix = semitones > 0.0f ? "+" : "";
-            g.setColour (juce::Colour (0xffd7ffe0));
-            g.setFont (juce::FontOptions (10.0f, juce::Font::bold));
-            g.drawText ("POINT " + juce::String (activePoint + 1) + "  " + prefix
-                            + juce::String (semitones, 1) + " st",
-                        graph.toNearestInt().reduced (5, 3),
+            g.setColour (juce::Colour (0xff34764e));
+            g.drawLine (graph.getX(), graph.getCentreY(), graph.getRight(),
+                        graph.getCentreY(), 1.4f);
+
+            std::array<juce::Point<float>, TapeStopperAudioProcessor::numEnvelopePoints>
+                points;
+            for (int point = 0; point < TapeStopperAudioProcessor::numEnvelopePoints;
+                 ++point)
+                points[static_cast<size_t> (point)] = getPointPosition (point, graph);
+
+            juce::Path curve;
+            curve.startNewSubPath (points.front());
+            for (int point = 1; point < TapeStopperAudioProcessor::numEnvelopePoints;
+                 ++point)
+                curve.lineTo (points[static_cast<size_t> (point)]);
+
+            g.setColour (viewColour.withAlpha (curveAlpha));
+            g.strokePath (curve, juce::PathStrokeType (2.0f));
+
+            for (int point = 0; point < TapeStopperAudioProcessor::numEnvelopePoints;
+                 ++point)
+            {
+                const auto size = point == activePoint ? 8.0f : 6.0f;
+                const auto handle = juce::Rectangle<float> (size, size)
+                                        .withCentre (points[static_cast<size_t> (point)]);
+                g.setColour (point == activePoint ? juce::Colour (0xffffff72)
+                                                  : juce::Colour (0xffb9ffc8)
+                                                        .withAlpha (curveAlpha));
+                g.fillRect (handle);
+                g.setColour (juce::Colour (0xff0a3317));
+                g.drawRect (handle, 1.0f);
+            }
+
+            if (activePoint >= 0)
+            {
+                const auto semitones = (0.5f - getPointY (activePoint)) * 24.0f;
+                const auto prefix = semitones > 0.0f ? "+" : "";
+                drawActiveReadout (g, graph,
+                                   "ENV " + juce::String (activePoint + 1) + "  "
+                                       + prefix + juce::String (semitones, 1) + " st");
+            }
+        }
+        else
+        {
+            const auto downCurve = createCurvePath (selectedView, downDirection, graph);
+            const auto upCurve = createCurvePath (selectedView, upDirection, graph);
+            const auto downColour = getCurveColour (selectedView, downDirection);
+            const auto upColour = getCurveColour (selectedView, upDirection);
+            g.setColour (upColour.withAlpha (0.88f * curveAlpha));
+            g.strokePath (upCurve, juce::PathStrokeType (3.6f));
+            g.setColour (downColour.withAlpha (curveAlpha));
+            g.strokePath (downCurve, juce::PathStrokeType (1.8f));
+
+            for (int direction = 0; direction < 2; ++direction)
+                for (int point = 0;
+                     point < TapeStopperAudioProcessor::numCurveControlPoints; ++point)
+                {
+                    const auto position = getCurvePointPosition
+                        (selectedView, direction, point, graph);
+                    const auto active = direction == activeCurveDirection
+                                        && point == activeCurvePoint;
+                    const auto handle = juce::Rectangle<float>
+                                        (active ? 8.0f : 6.0f,
+                                         active ? 8.0f : 6.0f).withCentre (position);
+                    g.setColour (active ? juce::Colour (0xffffff72)
+                                        : (direction == downDirection
+                                               ? downColour : upColour)
+                                              .withAlpha (curveAlpha));
+                    if (direction == downDirection)
+                        g.fillRect (handle);
+                    else
+                        g.fillEllipse (handle);
+                    g.setColour (juce::Colour (0xff101616));
+                    if (direction == downDirection)
+                        g.drawRect (handle, 1.0f);
+                    else
+                        g.drawEllipse (handle, 1.0f);
+                }
+
+            g.setColour (downColour.withAlpha (0.88f));
+            g.setFont (juce::FontOptions (9.0f, juce::Font::bold));
+            g.drawText ("L: DOWN", graph.toNearestInt().reduced (5, 3),
+                        juce::Justification::topLeft, false);
+            g.setColour (upColour.withAlpha (0.88f));
+            g.drawText ("R: UP", graph.toNearestInt().reduced (5, 3),
                         juce::Justification::topRight, false);
+
+            if (activeCurvePoint >= 0)
+            {
+                const auto value = getCurvePointY
+                    (selectedView, activeCurveDirection, activeCurvePoint);
+                drawActiveReadout
+                    (g, graph,
+                     juce::String (activeCurveDirection == downDirection ? "DOWN " : "UP ")
+                         + juce::String (activeCurvePoint + 1) + "  "
+                         + juce::String (juce::roundToInt (value * 100.0f)) + "%");
+            }
         }
+
+        paintTabs (g);
     }
 
     void mouseDown (const juce::MouseEvent& event) override
     {
-        if (! event.mods.isLeftButtonDown() || event.getNumberOfClicks() > 1)
+        if (event.getNumberOfClicks() > 1)
+            return;
+
+        if (getTabArea().contains (event.position))
+        {
+            endActiveGestures();
+            const auto tab = tabAtPosition (event.position);
+            if (tab < 0)
+                return;
+
+            if (getLedBounds (tab).expanded (4.0f).contains (event.position))
+                toggleViewEnabled (tab);
+            else
+                selectedView = tab;
+            repaint();
+            return;
+        }
+
+        if (selectedView != envelopeView)
+        {
+            const auto direction = event.mods.isRightButtonDown()
+                                       ? upDirection : downDirection;
+            if (! event.mods.isLeftButtonDown() && ! event.mods.isRightButtonDown())
+                return;
+            const auto closestPoint = findClosestCurvePoint
+                                      (event.position, direction);
+            if (closestPoint < 0)
+                return;
+
+            activeCurveDirection = direction;
+            activeCurvePoint = closestPoint;
+            if (auto* parameter = getCurveParameter
+                                  (selectedView, direction, closestPoint))
+                parameter->beginChangeGesture();
+            updateActiveCurvePoint (event.position);
+            return;
+        }
+
+        if (! event.mods.isLeftButtonDown())
             return;
 
         const auto closestPoint = findClosestPoint (event.position);
@@ -1350,6 +1554,17 @@ public:
 
     void mouseDoubleClick (const juce::MouseEvent& event) override
     {
+        if (! getGraphBounds().contains (event.position))
+            return;
+
+        if (selectedView != envelopeView)
+        {
+            resetCurveDirection (selectedView,
+                                 event.mods.isRightButtonDown()
+                                     ? upDirection : downDirection);
+            return;
+        }
+
         if (! event.mods.isLeftButtonDown())
             return;
 
@@ -1371,8 +1586,17 @@ public:
 
     void mouseDrag (const juce::MouseEvent& event) override
     {
-        if (activePoint >= 0)
+        if (activeCurvePoint >= 0)
+            updateActiveCurvePoint (event.position);
+        else if (activePoint >= 0)
             updateActivePoint (event.position);
+    }
+
+    void mouseMove (const juce::MouseEvent& event) override
+    {
+        setMouseCursor (getTabArea().contains (event.position)
+                            ? juce::MouseCursor::PointingHandCursor
+                            : juce::MouseCursor::CrosshairCursor);
     }
 
     void mouseUp (const juce::MouseEvent&) override
@@ -1380,7 +1604,35 @@ public:
         endActiveGestures();
     }
 
+    void resetCurrentView()
+    {
+        endActiveGestures();
+        if (selectedView == envelopeView)
+        {
+            for (auto* parameter : yParameters)
+                setParameterValue (parameter, 0.5f);
+        }
+        else
+        {
+            resetCurveDirection (selectedView, downDirection);
+            resetCurveDirection (selectedView, upDirection);
+        }
+        repaint();
+    }
+
+    juce::String getResetButtonText() const
+    {
+        return selectedView == envelopeView ? "ENV RESET" : "CURVE RESET";
+    }
+
 private:
+    static constexpr int pitchView = 0;
+    static constexpr int filterView = 1;
+    static constexpr int volumeView = 2;
+    static constexpr int envelopeView = 3;
+    static constexpr int downDirection = 0;
+    static constexpr int upDirection = 1;
+
     void timerCallback() override
     {
         repaint();
@@ -1388,7 +1640,274 @@ private:
 
     juce::Rectangle<float> getGraphBounds() const
     {
-        return getLocalBounds().toFloat().reduced (5.0f, 4.0f);
+        return getLocalBounds().toFloat().withTrimmedBottom (22.0f)
+                               .reduced (5.0f, 3.0f);
+    }
+
+    juce::Rectangle<float> getTabArea() const
+    {
+        auto area = getLocalBounds().toFloat();
+        return area.removeFromBottom (21.0f);
+    }
+
+    juce::Rectangle<float> getTabBounds (int tab) const
+    {
+        const auto area = getTabArea();
+        constexpr auto gap = 5.0f;
+        const auto width = (area.getWidth() - gap * 3.0f) / 4.0f;
+        return { area.getX() + (width + gap) * static_cast<float> (tab),
+                 area.getY(), width, area.getHeight() };
+    }
+
+    juce::Rectangle<float> getLedBounds (int tab) const
+    {
+        const auto tabBounds = getTabBounds (tab);
+        return juce::Rectangle<float> (8.0f, 8.0f)
+            .withCentre ({ tabBounds.getX() + 8.0f, tabBounds.getCentreY() });
+    }
+
+    int tabAtPosition (juce::Point<float> position) const
+    {
+        for (int tab = 0; tab < 4; ++tab)
+            if (getTabBounds (tab).contains (position))
+                return tab;
+        return -1;
+    }
+
+    static juce::Colour getViewColour (int view)
+    {
+        const std::array<juce::Colour, 4> colours
+            { juce::Colour (0xff36a9ff), juce::Colour (0xffff9e3d),
+              juce::Colour (0xffc779ff), juce::Colour (0xff49ff70) };
+        return colours[static_cast<size_t> (juce::jlimit (0, 3, view))];
+    }
+
+    static juce::Colour getCurveColour (int view, int direction)
+    {
+        const std::array<std::array<juce::Colour, 2>, 3> colours
+            {{ { juce::Colour (0xff35e7ff), juce::Colour (0xff3278ff) },
+               { juce::Colour (0xffff9e3d), juce::Colour (0xffa96232) },
+               { juce::Colour (0xffd76cff), juce::Colour (0xff5840bd) } }};
+        return colours[static_cast<size_t> (juce::jlimit (pitchView, volumeView, view))]
+                      [static_cast<size_t> (juce::jlimit (downDirection, upDirection,
+                                                         direction))];
+    }
+
+    bool isViewEnabled (int view) const
+    {
+        const auto* value = enabledValues[static_cast<size_t>
+                                          (juce::jlimit (0, 3, view))];
+        return value != nullptr && value->load() >= 0.5f;
+    }
+
+    void toggleViewEnabled (int view)
+    {
+        if (auto* parameter = enabledParameters[static_cast<size_t>
+                                                (juce::jlimit (0, 3, view))])
+        {
+            parameter->beginChangeGesture();
+            parameter->setValueNotifyingHost (parameter->getValue() < 0.5f
+                                                   ? 1.0f : 0.0f);
+            parameter->endChangeGesture();
+        }
+    }
+
+    void paintTabs (juce::Graphics& g) const
+    {
+        const std::array<juce::String, 4> names
+            { juce::String ("PITCH"), juce::String ("FILTER"),
+              juce::String ("VOLUME"), juce::String ("ENVELOPE") };
+
+        for (int tab = 0; tab < 4; ++tab)
+        {
+            const auto tabBounds = getTabBounds (tab);
+            const auto led = getLedBounds (tab);
+            const auto button = tabBounds.withTrimmedLeft (14.0f).reduced (1.5f, 2.0f);
+            const auto colour = getViewColour (tab);
+            const auto selected = tab == selectedView;
+
+            g.setColour (juce::Colour (0xff303335));
+            g.fillEllipse (led.expanded (1.2f));
+            g.setColour (isViewEnabled (tab) ? colour : colour.withAlpha (0.20f));
+            g.fillEllipse (led);
+
+            juce::ColourGradient fill
+                (selected ? juce::Colour (0xffd6e7f2) : juce::Colour (0xffd0d1cf),
+                 button.getX(), button.getY(),
+                 selected ? juce::Colour (0xff859aaa) : juce::Colour (0xff8f9291),
+                 button.getX(), button.getBottom(), false);
+            g.setGradientFill (fill);
+            g.fillRoundedRectangle (button, 2.0f);
+            g.setColour (selected ? juce::Colour (0xff168bd4)
+                                  : juce::Colour (0xff4b4e50));
+            g.drawRoundedRectangle (button, 2.0f, selected ? 1.6f : 1.0f);
+            g.setColour (colour.darker (0.55f));
+            g.setFont (juce::FontOptions (8.5f, juce::Font::bold));
+            g.drawFittedText (names[static_cast<size_t> (tab)],
+                              button.toNearestInt().reduced (2, 0),
+                              juce::Justification::centred, 1, 0.72f);
+        }
+    }
+
+    float getCurvePointY (int view, int direction, int point) const
+    {
+        const auto* value = curveValues[static_cast<size_t> (view)]
+                                      [static_cast<size_t> (direction)]
+                                      [static_cast<size_t> (point)];
+        return value != nullptr ? juce::jlimit (0.0f, 1.0f, value->load())
+                                : static_cast<float> (point + 1)
+                                      / static_cast<float>
+                                          (TapeStopperAudioProcessor::numCurveControlPoints
+                                           + 1);
+    }
+
+    juce::RangedAudioParameter* getCurveParameter (int view, int direction,
+                                                    int point) const
+    {
+        if (view < pitchView || view > volumeView
+            || direction < downDirection || direction > upDirection
+            || point < 0 || point >= TapeStopperAudioProcessor::numCurveControlPoints)
+            return nullptr;
+        return curveParameters[static_cast<size_t> (view)]
+                              [static_cast<size_t> (direction)]
+                              [static_cast<size_t> (point)];
+    }
+
+    std::array<float, TapeStopperAudioProcessor::numCurveControlPoints>
+    getCurveControls (int view, int direction) const
+    {
+        std::array<float, TapeStopperAudioProcessor::numCurveControlPoints> result {};
+        for (int point = 0; point < TapeStopperAudioProcessor::numCurveControlPoints;
+             ++point)
+            result[static_cast<size_t> (point)] = getCurvePointY (view, direction, point);
+        return result;
+    }
+
+    static float evaluateDisplayCurve
+        (const std::array<float, TapeStopperAudioProcessor::numCurveControlPoints>& controls,
+         float position)
+    {
+        constexpr auto numValues = TapeStopperAudioProcessor::numCurveControlPoints + 2;
+        std::array<float, numValues> values {};
+        values.front() = 0.0f;
+        values.back() = 1.0f;
+        for (int point = 0; point < TapeStopperAudioProcessor::numCurveControlPoints;
+             ++point)
+            values[static_cast<size_t> (point + 1)]
+                = juce::jlimit (0.0f, 1.0f,
+                                controls[static_cast<size_t> (point)]);
+
+        const auto x = juce::jlimit (0.0f, 1.0f, position)
+                       * static_cast<float> (numValues - 1);
+        const auto segment = juce::jlimit
+            (0, numValues - 2, static_cast<int> (std::floor (x)));
+        const auto t = juce::jlimit (0.0f, 1.0f, x - static_cast<float> (segment));
+        const auto p0 = values[static_cast<size_t> (juce::jmax (0, segment - 1))];
+        const auto p1 = values[static_cast<size_t> (segment)];
+        const auto p2 = values[static_cast<size_t> (segment + 1)];
+        const auto p3 = values[static_cast<size_t>
+                               (juce::jmin (numValues - 1, segment + 2))];
+        const auto t2 = t * t;
+        const auto t3 = t2 * t;
+        return juce::jlimit
+            (0.0f, 1.0f,
+             0.5f * ((2.0f * p1) + (-p0 + p2) * t
+                     + (2.0f * p0 - 5.0f * p1 + 4.0f * p2 - p3) * t2
+                     + (-p0 + 3.0f * p1 - 3.0f * p2 + p3) * t3));
+    }
+
+    juce::Path createCurvePath (int view, int direction,
+                                juce::Rectangle<float> graph) const
+    {
+        const auto controls = getCurveControls (view, direction);
+        juce::Path path;
+        for (int sample = 0; sample <= 96; ++sample)
+        {
+            const auto x = static_cast<float> (sample) / 96.0f;
+            const auto point = juce::Point<float>
+                { graph.getX() + graph.getWidth() * x,
+                  graph.getY() + graph.getHeight()
+                                     * evaluateDisplayCurve (controls, x) };
+            if (sample == 0)
+                path.startNewSubPath (point);
+            else
+                path.lineTo (point);
+        }
+        return path;
+    }
+
+    juce::Point<float> getCurvePointPosition (int view, int direction, int point,
+                                              juce::Rectangle<float> graph) const
+    {
+        const auto x = static_cast<float> (point + 1)
+                       / static_cast<float>
+                           (TapeStopperAudioProcessor::numCurveControlPoints + 1);
+        return { graph.getX() + graph.getWidth() * x,
+                 graph.getY() + graph.getHeight()
+                                    * getCurvePointY (view, direction, point) };
+    }
+
+    int findClosestCurvePoint (juce::Point<float> position, int direction) const
+    {
+        const auto graph = getGraphBounds();
+        auto closestDistance = 14.0f;
+        auto closestPoint = -1;
+        for (int point = 0; point < TapeStopperAudioProcessor::numCurveControlPoints;
+             ++point)
+        {
+            const auto distance = position.getDistanceFrom
+                (getCurvePointPosition (selectedView, direction, point, graph));
+            if (distance < closestDistance)
+            {
+                closestDistance = distance;
+                closestPoint = point;
+            }
+        }
+        return closestPoint;
+    }
+
+    void updateActiveCurvePoint (juce::Point<float> position)
+    {
+        if (activeCurvePoint < 0)
+            return;
+        const auto graph = getGraphBounds();
+        const auto value = juce::jlimit
+            (0.0f, 1.0f, (position.y - graph.getY()) / graph.getHeight());
+        if (auto* parameter = getCurveParameter
+                              (selectedView, activeCurveDirection, activeCurvePoint))
+            parameter->setValueNotifyingHost (parameter->convertTo0to1 (value));
+        repaint();
+    }
+
+    static void setParameterValue (juce::RangedAudioParameter* parameter, float value)
+    {
+        if (parameter == nullptr)
+            return;
+        parameter->beginChangeGesture();
+        parameter->setValueNotifyingHost (parameter->convertTo0to1 (value));
+        parameter->endChangeGesture();
+    }
+
+    void resetCurveDirection (int view, int direction)
+    {
+        endActiveGestures();
+        for (int point = 0; point < TapeStopperAudioProcessor::numCurveControlPoints;
+             ++point)
+            setParameterValue (getCurveParameter (view, direction, point),
+                               static_cast<float> (point + 1)
+                                   / static_cast<float>
+                                       (TapeStopperAudioProcessor::numCurveControlPoints
+                                        + 1));
+        repaint();
+    }
+
+    static void drawActiveReadout (juce::Graphics& g, juce::Rectangle<float> graph,
+                                   const juce::String& text)
+    {
+        g.setColour (juce::Colour (0xffd7ffe0));
+        g.setFont (juce::FontOptions (9.5f, juce::Font::bold));
+        g.drawText (text, graph.toNearestInt().reduced (5, 3),
+                    juce::Justification::bottomRight, false);
     }
 
     int findClosestPoint (juce::Point<float> position) const
@@ -1469,19 +1988,27 @@ private:
 
     void endActiveGestures()
     {
-        if (activePoint < 0)
-            return;
+        if (activeCurvePoint >= 0)
+        {
+            if (auto* parameter = getCurveParameter
+                                  (selectedView, activeCurveDirection, activeCurvePoint))
+                parameter->endChangeGesture();
+            activeCurvePoint = -1;
+            activeCurveDirection = -1;
+        }
 
-        if (auto* xParameter = getXParameter (activePoint))
-            xParameter->endChangeGesture();
-        if (auto* yParameter = yParameters[static_cast<size_t> (activePoint)])
-            yParameter->endChangeGesture();
-        activePoint = -1;
+        if (activePoint >= 0)
+        {
+            if (auto* xParameter = getXParameter (activePoint))
+                xParameter->endChangeGesture();
+            if (auto* yParameter = yParameters[static_cast<size_t> (activePoint)])
+                yParameter->endChangeGesture();
+            activePoint = -1;
+        }
         repaint();
     }
 
     TapeStopperAudioProcessor& processor;
-    std::atomic<float>* enabledValue = nullptr;
     std::array<juce::RangedAudioParameter*, TapeStopperAudioProcessor::numEnvelopePoints - 2>
         xParameters {};
     std::array<std::atomic<float>*, TapeStopperAudioProcessor::numEnvelopePoints - 2>
@@ -1490,7 +2017,367 @@ private:
         yParameters {};
     std::array<std::atomic<float>*, TapeStopperAudioProcessor::numEnvelopePoints>
         yValues {};
+    std::array<std::array<std::array<juce::RangedAudioParameter*,
+                                    TapeStopperAudioProcessor::numCurveControlPoints>, 2>, 3>
+        curveParameters {};
+    std::array<std::array<std::array<std::atomic<float>*,
+                                    TapeStopperAudioProcessor::numCurveControlPoints>, 2>, 3>
+        curveValues {};
+    std::array<juce::RangedAudioParameter*, 4> enabledParameters {};
+    std::array<std::atomic<float>*, 4> enabledValues {};
+    int selectedView = envelopeView;
     int activePoint = -1;
+    int activeCurvePoint = -1;
+    int activeCurveDirection = -1;
+};
+
+class SequencerEnableLedComponent final : public juce::Component,
+                                          public juce::SettableTooltipClient,
+                                          private juce::Timer
+{
+public:
+    explicit SequencerEnableLedComponent (juce::AudioProcessorValueTreeState& state)
+        : parameter (state.getParameter (sequencerEnabledParameterId)),
+          value (state.getRawParameterValue (sequencerEnabledParameterId))
+    {
+        setMouseCursor (juce::MouseCursor::PointingHandCursor);
+        setTooltip ("Enable or disable sequencer control of the main Play button");
+        startTimerHz (20);
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        const auto area = getLocalBounds().toFloat().reduced (2.0f);
+        const auto enabled = value != nullptr && value->load() >= 0.5f;
+        g.setColour (juce::Colour (0xff343738));
+        g.fillEllipse (area.expanded (1.5f));
+        g.setColour (enabled ? juce::Colour (0xff35c6ff)
+                             : juce::Colour (0xff35c6ff).withAlpha (0.20f));
+        g.fillEllipse (area);
+        if (enabled)
+        {
+            g.setColour (juce::Colour (0xffbcefff).withAlpha (0.75f));
+            g.fillEllipse (area.reduced (2.5f));
+        }
+    }
+
+    void mouseDown (const juce::MouseEvent& event) override
+    {
+        if (! event.mods.isLeftButtonDown() || parameter == nullptr)
+            return;
+        parameter->beginChangeGesture();
+        parameter->setValueNotifyingHost (parameter->getValue() < 0.5f ? 1.0f : 0.0f);
+        parameter->endChangeGesture();
+        repaint();
+    }
+
+private:
+    void timerCallback() override { repaint(); }
+
+    juce::RangedAudioParameter* parameter = nullptr;
+    std::atomic<float>* value = nullptr;
+};
+
+class SequencerPanelComponent final : public juce::Component,
+                                      public juce::SettableTooltipClient,
+                                      private juce::Timer
+{
+public:
+    SequencerPanelComponent (TapeStopperAudioProcessor& owner,
+                             juce::AudioProcessorValueTreeState& state)
+        : processor (owner),
+          clockModeParameter (state.getParameter (sequencerClockModeParameterId)),
+          resolutionParameter (state.getParameter (sequencerResolutionParameterId)),
+          freeRateParameter (state.getParameter (sequencerFreeRateParameterId)),
+          lengthParameter (state.getParameter (sequencerLengthParameterId)),
+          offsetParameter (state.getParameter (sequencerOffsetParameterId)),
+          clockModeValue (state.getRawParameterValue (sequencerClockModeParameterId)),
+          resolutionValue (state.getRawParameterValue (sequencerResolutionParameterId)),
+          freeRateValue (state.getRawParameterValue (sequencerFreeRateParameterId)),
+          lengthValue (state.getRawParameterValue (sequencerLengthParameterId)),
+          offsetValue (state.getRawParameterValue (sequencerOffsetParameterId))
+    {
+        for (int step = 0; step < TapeStopperAudioProcessor::numSequencerSteps; ++step)
+        {
+            stepParameters[static_cast<size_t> (step)]
+                = state.getParameter (sequencerStepParameterId (step));
+            stepValues[static_cast<size_t> (step)]
+                = state.getRawParameterValue (sequencerStepParameterId (step));
+        }
+        setMouseCursor (juce::MouseCursor::PointingHandCursor);
+        setTooltip ("64-step Play sequencer: click or drag squares; right-click controls to step backwards");
+        startTimerHz (30);
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        const auto freeClock = getIntegerValue (clockModeValue, 0) != 0;
+        const auto resolution = juce::jlimit
+            (0, TapeStopperAudioProcessor::numSequencerResolutions - 1,
+             getIntegerValue (resolutionValue, 4));
+        const auto freeRate = juce::jlimit (25, 2000, getIntegerValue (freeRateValue, 125));
+        const auto length = juce::jlimit
+            (1, TapeStopperAudioProcessor::numSequencerSteps,
+             getIntegerValue (lengthValue, TapeStopperAudioProcessor::numSequencerSteps));
+        const auto offset = juce::jlimit
+            (0, TapeStopperAudioProcessor::numSequencerSteps - 1,
+             getIntegerValue (offsetValue, 0));
+
+        drawControl (g, 0, freeClock ? "FREE" : "SYNC", freeClock);
+        drawControl (g, 1,
+                     freeClock ? "RATE " + juce::String (freeRate) + "ms"
+                               : "RATE " + TapeStopperAudioProcessor::sequencerResolutionName
+                                                (resolution),
+                     false);
+        drawControl (g, 2, "LEN " + juce::String (length), false);
+        drawControl (g, 3, "OFF " + juce::String (offset), false);
+        drawControl (g, 4, "RESET", false);
+
+        g.setColour (juce::Colour (0xff353839));
+        g.setFont (juce::FontOptions (9.0f, juce::Font::bold));
+        g.drawText ("64 STEP PLAY SEQUENCER", getInfoBounds().toNearestInt(),
+                    juce::Justification::centredRight, false);
+
+        const auto activeStep = processor.getCurrentSequencerStep();
+        for (int step = 0; step < TapeStopperAudioProcessor::numSequencerSteps; ++step)
+        {
+            const auto bounds = getStepBounds (step);
+            const auto on = stepValues[static_cast<size_t> (step)] != nullptr
+                            && stepValues[static_cast<size_t> (step)]->load() >= 0.5f;
+            const auto insideLength = step < length;
+            auto fill = on ? juce::Colour (0xff168bd4) : juce::Colour (0xff555958);
+            if (! insideLength)
+                fill = fill.withAlpha (0.30f);
+            else if (step / 4 % 2 != 0)
+                fill = fill.brighter (0.06f);
+
+            g.setColour (fill);
+            g.fillRoundedRectangle (bounds, 1.4f);
+            g.setColour (step == activeStep ? juce::Colour (0xffffff8a)
+                                            : juce::Colour (0xff252829));
+            g.drawRoundedRectangle (bounds, 1.4f, step == activeStep ? 2.0f : 1.0f);
+        }
+    }
+
+    void mouseDown (const juce::MouseEvent& event) override
+    {
+        const auto step = stepAt (event.position);
+        if (step >= 0)
+        {
+            const auto currentlyOn = stepValues[static_cast<size_t> (step)] != nullptr
+                                     && stepValues[static_cast<size_t> (step)]->load() >= 0.5f;
+            paintStepsOn = ! currentlyOn;
+            lastPaintedStep = -1;
+            setStep (step, paintStepsOn);
+            return;
+        }
+
+        const auto control = controlAt (event.position);
+        if (control < 0)
+            return;
+        const auto direction = event.mods.isRightButtonDown() ? -1 : 1;
+        adjustControl (control, direction);
+    }
+
+    void mouseDrag (const juce::MouseEvent& event) override
+    {
+        const auto step = stepAt (event.position);
+        if (step >= 0 && step != lastPaintedStep)
+            setStep (step, paintStepsOn);
+    }
+
+    void mouseWheelMove (const juce::MouseEvent& event,
+                         const juce::MouseWheelDetails& wheel) override
+    {
+        const auto control = controlAt (event.position);
+        if (control >= 0 && control < 4 && wheel.deltaY != 0.0f)
+            adjustControl (control, wheel.deltaY > 0.0f ? 1 : -1);
+    }
+
+private:
+    void timerCallback() override { repaint(); }
+
+    juce::Rectangle<float> designRect (float x, float y, float width,
+                                       float height) const
+    {
+        return { x * static_cast<float> (getWidth()) / designWidth,
+                 y * static_cast<float> (getHeight()) / designHeight,
+                 width * static_cast<float> (getWidth()) / designWidth,
+                 height * static_cast<float> (getHeight()) / designHeight };
+    }
+
+    juce::Rectangle<float> getControlBounds (int control) const
+    {
+        constexpr auto buttonWidth = 72.0f;
+        constexpr auto buttonGap = 8.0f;
+        const auto safeControl = juce::jlimit (0, 4, control);
+        const auto left = static_cast<float> (safeControl)
+                          * (buttonWidth + buttonGap);
+        return designRect (left, 0.0f, buttonWidth, 19.0f);
+    }
+
+    juce::Rectangle<float> getInfoBounds() const
+    {
+        return designRect (408.0f, 0.0f, designWidth - 408.0f, 19.0f);
+    }
+
+    juce::Rectangle<float> getStepBounds (int step) const
+    {
+        const auto row = step / 32;
+        const auto column = step % 32;
+        const auto columnWidth = designWidth / 32.0f;
+        const auto cell = designRect (column * columnWidth, 22.0f + row * 18.0f,
+                                      columnWidth, 17.0f);
+        const auto side = juce::jmin (cell.getWidth() - 2.0f, cell.getHeight() - 2.0f);
+        return juce::Rectangle<float> (side, side).withCentre (cell.getCentre());
+    }
+
+    int stepAt (juce::Point<float> position) const
+    {
+        for (int step = 0; step < TapeStopperAudioProcessor::numSequencerSteps; ++step)
+            if (getStepBounds (step).expanded (1.0f).contains (position))
+                return step;
+        return -1;
+    }
+
+    int controlAt (juce::Point<float> position) const
+    {
+        for (int control = 0; control < 5; ++control)
+            if (getControlBounds (control).contains (position))
+                return control;
+        return -1;
+    }
+
+    void drawControl (juce::Graphics& g, int control, const juce::String& text,
+                      bool highlighted) const
+    {
+        const auto bounds = getControlBounds (control);
+        juce::ColourGradient fill
+            (highlighted ? juce::Colour (0xffc7e6f8) : juce::Colour (0xffdadbd8),
+             bounds.getX(), bounds.getY(),
+             highlighted ? juce::Colour (0xff6f9cb9) : juce::Colour (0xff8e9190),
+             bounds.getX(), bounds.getBottom(), false);
+        g.setGradientFill (fill);
+        g.fillRoundedRectangle (bounds, 2.0f);
+        g.setColour (highlighted ? juce::Colour (0xff168bd4)
+                                 : juce::Colour (0xff4b4e50));
+        g.drawRoundedRectangle (bounds, 2.0f, 1.0f);
+        g.setColour (juce::Colour (0xff202324));
+        g.setFont (juce::FontOptions (8.5f, juce::Font::bold));
+        g.drawFittedText (text, bounds.toNearestInt().reduced (2, 0),
+                          juce::Justification::centred, 1, 0.70f);
+    }
+
+    static int getIntegerValue (const std::atomic<float>* value, int fallback)
+    {
+        return value != nullptr ? juce::roundToInt (value->load()) : fallback;
+    }
+
+    static void setActualValue (juce::RangedAudioParameter* parameter, float value)
+    {
+        if (parameter == nullptr)
+            return;
+        parameter->beginChangeGesture();
+        parameter->setValueNotifyingHost (parameter->convertTo0to1 (value));
+        parameter->endChangeGesture();
+    }
+
+    void adjustControl (int control, int direction)
+    {
+        if (control == 0)
+        {
+            setActualValue (clockModeParameter,
+                            getIntegerValue (clockModeValue, 0) == 0 ? 1.0f : 0.0f);
+        }
+        else if (control == 1)
+        {
+            if (getIntegerValue (clockModeValue, 0) == 0)
+            {
+                const auto current = getIntegerValue (resolutionValue, 4);
+                const auto count = TapeStopperAudioProcessor::numSequencerResolutions;
+                setActualValue (resolutionParameter,
+                                static_cast<float> (juce::jlimit
+                                    (0, count - 1, current + direction)));
+            }
+            else
+            {
+                static constexpr std::array<int, 14> rates
+                    { 25, 50, 75, 100, 125, 150, 200, 250, 333, 500,
+                      750, 1000, 1500, 2000 };
+                const auto current = getIntegerValue (freeRateValue, 125);
+                auto index = 0;
+                auto closest = std::abs (rates[0] - current);
+                for (int candidate = 1; candidate < static_cast<int> (rates.size());
+                     ++candidate)
+                {
+                    const auto distance = std::abs
+                        (rates[static_cast<size_t> (candidate)] - current);
+                    if (distance < closest)
+                    {
+                        closest = distance;
+                        index = candidate;
+                    }
+                }
+                index = juce::jlimit (0, static_cast<int> (rates.size()) - 1,
+                                      index + direction);
+                setActualValue (freeRateParameter,
+                                static_cast<float> (rates[static_cast<size_t> (index)]));
+            }
+        }
+        else if (control == 2)
+        {
+            const auto current = getIntegerValue
+                (lengthValue, TapeStopperAudioProcessor::numSequencerSteps);
+            const auto next = juce::jlimit
+                (1, TapeStopperAudioProcessor::numSequencerSteps,
+                 current + direction);
+            setActualValue (lengthParameter, static_cast<float> (next));
+        }
+        else if (control == 3)
+        {
+            const auto current = getIntegerValue (offsetValue, 0);
+            setActualValue (offsetParameter,
+                            static_cast<float> (juce::jlimit
+                                (0, TapeStopperAudioProcessor::numSequencerSteps - 1,
+                                 current + direction)));
+        }
+        else if (control == 4)
+        {
+            for (auto* parameter : stepParameters)
+                setActualValue (parameter, 0.0f);
+        }
+        repaint();
+    }
+
+    void setStep (int step, bool enabled)
+    {
+        if (step < 0 || step >= TapeStopperAudioProcessor::numSequencerSteps
+            || step == lastPaintedStep)
+            return;
+        setActualValue (stepParameters[static_cast<size_t> (step)], enabled ? 1.0f : 0.0f);
+        lastPaintedStep = step;
+        repaint();
+    }
+
+    TapeStopperAudioProcessor& processor;
+    juce::RangedAudioParameter* clockModeParameter = nullptr;
+    juce::RangedAudioParameter* resolutionParameter = nullptr;
+    juce::RangedAudioParameter* freeRateParameter = nullptr;
+    juce::RangedAudioParameter* lengthParameter = nullptr;
+    juce::RangedAudioParameter* offsetParameter = nullptr;
+    std::atomic<float>* clockModeValue = nullptr;
+    std::atomic<float>* resolutionValue = nullptr;
+    std::atomic<float>* freeRateValue = nullptr;
+    std::atomic<float>* lengthValue = nullptr;
+    std::atomic<float>* offsetValue = nullptr;
+    std::array<juce::RangedAudioParameter*, TapeStopperAudioProcessor::numSequencerSteps>
+        stepParameters {};
+    std::array<std::atomic<float>*, TapeStopperAudioProcessor::numSequencerSteps>
+        stepValues {};
+    bool paintStepsOn = false;
+    int lastPaintedStep = -1;
+    static constexpr float designWidth = 690.0f;
+    static constexpr float designHeight = 58.0f;
 };
 
 class SetupPanelComponent final : public juce::Component
@@ -1530,7 +2417,7 @@ public:
         buttonDisplayButton.setTooltip
             ("Swap the Play and Stop icons without changing the audio behaviour");
         waveformDisplayButton.setTooltip
-            ("Show or hide the live output waveform behind the envelope");
+            ("Show or hide the persistent tape-speed trace behind the envelope");
 
         fullSpeedMuteButton.onClick = [this]
         {
@@ -1581,9 +2468,9 @@ public:
         g.drawFittedText ("Mutes normal full-speed output; transitions remain audible.",
                           190, 24, 164, 38, juce::Justification::centredLeft, 2);
         g.drawFittedText ("Swaps the Play and Stop icons only.",
-                          205, 85, 149, 27, juce::Justification::centredLeft, 2);
-        g.drawFittedText ("Shows the live output behind the envelope.",
-                          205, 117, 149, 27, juce::Justification::centredLeft, 2);
+                          190, 85, 164, 27, juce::Justification::centredLeft, 2);
+        g.drawFittedText ("Shows the tape-speed transition trace.",
+                          190, 117, 164, 27, juce::Justification::centredLeft, 2);
     }
 
     void resized() override
@@ -1598,8 +2485,8 @@ public:
         };
 
         fullSpeedMuteButton.setBounds (scaled (10, 27, 170, 28));
-        buttonDisplayButton.setBounds (scaled (10, 85, 185, 28));
-        waveformDisplayButton.setBounds (scaled (10, 117, 185, 28));
+        buttonDisplayButton.setBounds (scaled (10, 85, 170, 28));
+        waveformDisplayButton.setBounds (scaled (10, 117, 170, 28));
     }
 
 private:
@@ -1639,10 +2526,9 @@ TapeStopperAudioProcessorEditor::TapeStopperAudioProcessorEditor (TapeStopperAud
     downButton.setLookAndFeel (smallButtonLookAndFeel.get());
     triggerModeButton.setLookAndFeel (smallButtonLookAndFeel.get());
     timingModeButton.setLookAndFeel (smallButtonLookAndFeel.get());
-    envelopeButton.setLookAndFeel (smallButtonLookAndFeel.get());
+    retriggerButton.setLookAndFeel (smallButtonLookAndFeel.get());
     envelopeResetButton.setLookAndFeel (smallButtonLookAndFeel.get());
-    downCurveButton.setLookAndFeel (smallButtonLookAndFeel.get());
-    upCurveButton.setLookAndFeel (smallButtonLookAndFeel.get());
+    sequencerViewButton.setLookAndFeel (smallButtonLookAndFeel.get());
 
     setupButton.setButtonText (juce::String());
     setupButton.getProperties().set (settingsCogProperty, true);
@@ -1670,60 +2556,14 @@ TapeStopperAudioProcessorEditor::TapeStopperAudioProcessorEditor (TapeStopperAud
                                 juce::Colour (0xffc2c4c3));
     timingModeButton.setColour (juce::TextButton::buttonOnColourId,
                                 juce::Colour (0xffc2c4c3));
-    envelopeButton.setColour (juce::TextButton::buttonColourId,
-                              juce::Colour (0xffc2c4c3));
-    envelopeButton.setColour (juce::TextButton::buttonOnColourId,
-                              juce::Colour (0xff4fac61));
     envelopeResetButton.setColour (juce::TextButton::buttonColourId,
                                    juce::Colour (0xffc2c4c3));
     envelopeResetButton.setColour (juce::TextButton::buttonOnColourId,
                                    juce::Colour (0xffc2c4c3));
-    downCurveButton.setColour (juce::TextButton::buttonColourId,
-                               juce::Colour (0xffc2c4c3));
-    downCurveButton.setColour (juce::TextButton::buttonOnColourId,
-                               juce::Colour (0xffc2c4c3));
-    upCurveButton.setColour (juce::TextButton::buttonColourId,
-                             juce::Colour (0xffc2c4c3));
-    upCurveButton.setColour (juce::TextButton::buttonOnColourId,
-                             juce::Colour (0xffc2c4c3));
-
-    downCurveButton.setTooltip
-        ("Cycle the downward transition through Linear, Gentle, Steep and S-Curve");
-    downCurveButton.onClick = [this]
-    {
-        auto& parameterState = processor.getValueTreeState();
-        auto* parameter = parameterState.getParameter (downCurveParameterId);
-        const auto* value = parameterState.getRawParameterValue (downCurveParameterId);
-        if (parameter != nullptr && value != nullptr)
-        {
-            const auto next = (juce::roundToInt (value->load()) + 1) % 4;
-            parameter->beginChangeGesture();
-            parameter->setValueNotifyingHost
-                (parameter->convertTo0to1 (static_cast<float> (next)));
-            parameter->endChangeGesture();
-            updateBottomControlText();
-        }
-    };
-    addAndMakeVisible (downCurveButton);
-
-    upCurveButton.setTooltip
-        ("Cycle the upward transition through Linear, Gentle, Steep and S-Curve");
-    upCurveButton.onClick = [this]
-    {
-        auto& parameterState = processor.getValueTreeState();
-        auto* parameter = parameterState.getParameter (upCurveParameterId);
-        const auto* value = parameterState.getRawParameterValue (upCurveParameterId);
-        if (parameter != nullptr && value != nullptr)
-        {
-            const auto next = (juce::roundToInt (value->load()) + 1) % 4;
-            parameter->beginChangeGesture();
-            parameter->setValueNotifyingHost
-                (parameter->convertTo0to1 (static_cast<float> (next)));
-            parameter->endChangeGesture();
-            updateBottomControlText();
-        }
-    };
-    addAndMakeVisible (upCurveButton);
+    sequencerViewButton.setColour (juce::TextButton::buttonColourId,
+                                   juce::Colour (0xffc2c4c3));
+    sequencerViewButton.setColour (juce::TextButton::buttonOnColourId,
+                                   juce::Colour (0xff168bd4));
 
     upAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>
                     (state, upEnabledParameterId, upButton);
@@ -1756,29 +2596,42 @@ TapeStopperAudioProcessorEditor::TapeStopperAudioProcessorEditor (TapeStopperAud
     };
     addAndMakeVisible (timingModeButton);
 
-    envelopeButton.setClickingTogglesState (true);
-    envelopeButton.setTooltip ("Enable the 11-point pitch envelope during downward motion");
-    addAndMakeVisible (envelopeButton);
-    envelopeAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>
-                         (state, envelopeEnabledParameterId, envelopeButton);
+    retriggerButton.setTooltip
+        ("Jump instantly to stopped speed, then run the current UP transition");
+    retriggerButton.onClick = [this]
+    {
+        if (auto* engage = processor.getValueTreeState().getParameter
+                           (engageParameterId);
+            engage != nullptr && engage->getValue() >= 0.5f)
+        {
+            engage->beginChangeGesture();
+            engage->setValueNotifyingHost (0.0f);
+            engage->endChangeGesture();
+        }
+
+        processor.requestRetrigger();
+        updateRetriggerButtonColour();
+    };
+    addAndMakeVisible (retriggerButton);
 
     envelopeResetButton.setTooltip
-        ("Reset every envelope point to zero semitones without changing its time");
+        ("Reset both curves or all envelope points in the selected graph view");
     envelopeResetButton.onClick = [this]
     {
-        auto& parameterState = processor.getValueTreeState();
-        for (int point = 0; point < TapeStopperAudioProcessor::numEnvelopePoints; ++point)
-        {
-            if (auto* parameter = parameterState.getParameter
-                                  (envelopeYParameterId (point)))
-            {
-                parameter->beginChangeGesture();
-                parameter->setValueNotifyingHost (parameter->convertTo0to1 (0.5f));
-                parameter->endChangeGesture();
-            }
-        }
+        if (auto* display = static_cast<EnvelopeEditorComponent*> (envelopeEditor.get()))
+            display->resetCurrentView();
     };
     addAndMakeVisible (envelopeResetButton);
+
+    sequencerViewButton.setClickingTogglesState (true);
+    sequencerViewButton.getProperties().set (largerButtonTextProperty, true);
+    sequencerViewButton.setTooltip
+        ("Switch the bottom panel between tape controls and the 64-step sequencer");
+    sequencerViewButton.onClick = [this]
+    {
+        showSequencerPanel (sequencerViewButton.getToggleState());
+    };
+    addAndMakeVisible (sequencerViewButton);
 
     mainTrigger = std::make_unique<MainTriggerComponent> (processor);
     timingBar = std::make_unique<TimingBarComponent> (processor, state);
@@ -1789,12 +2642,17 @@ TapeStopperAudioProcessorEditor::TapeStopperAudioProcessorEditor (TapeStopperAud
                   {
                       savePortableSettings();
                   });
+    sequencerEnableLed = std::make_unique<SequencerEnableLedComponent> (state);
+    sequencerPanel = std::make_unique<SequencerPanelComponent> (processor, state);
     addAndMakeVisible (*mainTrigger);
     addAndMakeVisible (*timingBar);
     addAndMakeVisible (*envelopeEditor);
     addAndMakeVisible (*presetSection);
     addAndMakeVisible (*setupPanel);
+    addAndMakeVisible (*sequencerEnableLed);
+    addAndMakeVisible (*sequencerPanel);
     setupPanel->setVisible (false);
+    sequencerPanel->setVisible (false);
 
     muteAtSlider.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
     muteAtSlider.setLookAndFeel (muteAtLookAndFeel.get());
@@ -1810,7 +2668,8 @@ TapeStopperAudioProcessorEditor::TapeStopperAudioProcessorEditor (TapeStopperAud
     muteAtValueLabel.setInterceptsMouseClicks (false, false);
     addAndMakeVisible (muteAtValueLabel);
 
-    for (auto* slider : { &driveSlider, &wowSlider, &flutterSlider,
+    for (auto* slider : { &filterAmountSlider, &volumeAmountSlider,
+                          &driveSlider, &wowSlider, &flutterSlider,
                           &fluxSlider, &mixSlider })
     {
         slider->setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
@@ -1819,12 +2678,20 @@ TapeStopperAudioProcessorEditor::TapeStopperAudioProcessorEditor (TapeStopperAud
         addAndMakeVisible (*slider);
     }
 
+    filterAmountSlider.setTooltip ("Maximum low-pass filtering reached by the curve");
+    volumeAmountSlider.setTooltip ("Maximum volume reduction reached by the curve");
     driveSlider.setTooltip ("Tape-style saturation amount");
     wowSlider.setTooltip ("Slow tape-speed variation at 0.33 Hz");
     flutterSlider.setTooltip ("Fast tape-speed variation at 6.5 Hz");
     fluxSlider.setTooltip ("Irregular pitch and playback instability during DOWN and UP");
     mixSlider.setTooltip ("Dry and processed signal balance");
 
+    filterAmountAttachment
+        = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>
+          (state, filterAmountParameterId, filterAmountSlider);
+    volumeAmountAttachment
+        = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>
+          (state, volumeAmountParameterId, volumeAmountSlider);
     driveAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>
                       (state, driveParameterId, driveSlider);
     wowAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>
@@ -1836,7 +2703,8 @@ TapeStopperAudioProcessorEditor::TapeStopperAudioProcessorEditor (TapeStopperAud
     mixAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>
                     (state, mixParameterId, mixSlider);
 
-    for (auto* label : { &driveValueLabel, &wowValueLabel,
+    for (auto* label : { &filterAmountValueLabel, &volumeAmountValueLabel,
+                         &driveValueLabel, &wowValueLabel,
                          &flutterValueLabel, &fluxValueLabel, &mixValueLabel })
     {
         label->setColour (juce::Label::textColourId, juce::Colour (0xff343637));
@@ -1848,10 +2716,13 @@ TapeStopperAudioProcessorEditor::TapeStopperAudioProcessorEditor (TapeStopperAud
 
     updateTriggerModeText();
     updateTimingModeText();
-    updateEnvelopeButtonText();
+    if (auto* display = static_cast<EnvelopeEditorComponent*> (envelopeEditor.get()))
+        envelopeResetButton.setButtonText (display->getResetButtonText());
     updateMuteAtText();
     updateBottomControlText();
     updateMotionButtonColours();
+    updateRetriggerButtonColour();
+    showSequencerPanel (false);
     startTimerHz (30);
 
     // JUCE may call resized() while resizability and constraints are being set.
@@ -1879,11 +2750,12 @@ TapeStopperAudioProcessorEditor::~TapeStopperAudioProcessorEditor()
     downButton.setLookAndFeel (nullptr);
     triggerModeButton.setLookAndFeel (nullptr);
     timingModeButton.setLookAndFeel (nullptr);
-    envelopeButton.setLookAndFeel (nullptr);
+    retriggerButton.setLookAndFeel (nullptr);
     envelopeResetButton.setLookAndFeel (nullptr);
-    downCurveButton.setLookAndFeel (nullptr);
-    upCurveButton.setLookAndFeel (nullptr);
+    sequencerViewButton.setLookAndFeel (nullptr);
     muteAtSlider.setLookAndFeel (nullptr);
+    filterAmountSlider.setLookAndFeel (nullptr);
+    volumeAmountSlider.setLookAndFeel (nullptr);
     driveSlider.setLookAndFeel (nullptr);
     wowSlider.setLookAndFeel (nullptr);
     flutterSlider.setLookAndFeel (nullptr);
@@ -1909,10 +2781,12 @@ void TapeStopperAudioProcessorEditor::timerCallback()
 
     updateTriggerModeText();
     updateTimingModeText();
-    updateEnvelopeButtonText();
+    if (auto* display = static_cast<EnvelopeEditorComponent*> (envelopeEditor.get()))
+        envelopeResetButton.setButtonText (display->getResetButtonText());
     updateMuteAtText();
     updateBottomControlText();
     updateMotionButtonColours();
+    updateRetriggerButtonColour();
 }
 
 void TapeStopperAudioProcessorEditor::savePortableSettings()
@@ -1940,21 +2814,39 @@ void TapeStopperAudioProcessorEditor::showSetupPanel (bool shouldShow)
     repaint();
 }
 
+void TapeStopperAudioProcessorEditor::showSequencerPanel (bool shouldShow)
+{
+    showingSequencer = shouldShow;
+    sequencerViewButton.setToggleState (showingSequencer,
+                                        juce::dontSendNotification);
+
+    for (auto* component : { static_cast<juce::Component*> (&filterAmountSlider),
+                             static_cast<juce::Component*> (&volumeAmountSlider),
+                             static_cast<juce::Component*> (&driveSlider),
+                             static_cast<juce::Component*> (&wowSlider),
+                             static_cast<juce::Component*> (&flutterSlider),
+                             static_cast<juce::Component*> (&fluxSlider),
+                             static_cast<juce::Component*> (&mixSlider),
+                             static_cast<juce::Component*> (&filterAmountValueLabel),
+                             static_cast<juce::Component*> (&volumeAmountValueLabel),
+                             static_cast<juce::Component*> (&driveValueLabel),
+                             static_cast<juce::Component*> (&wowValueLabel),
+                             static_cast<juce::Component*> (&flutterValueLabel),
+                             static_cast<juce::Component*> (&fluxValueLabel),
+                             static_cast<juce::Component*> (&mixValueLabel) })
+        component->setVisible (! showingSequencer);
+
+    if (sequencerPanel != nullptr)
+        sequencerPanel->setVisible (showingSequencer);
+    repaint();
+}
+
 void TapeStopperAudioProcessorEditor::updateTimingModeText()
 {
     const auto* mode = processor.getValueTreeState().getRawParameterValue (timingModeParameterId);
     timingModeButton.setButtonText (mode != nullptr && mode->load() >= 0.5f
                                         ? "SYNC"
                                         : "FREE");
-}
-
-void TapeStopperAudioProcessorEditor::updateEnvelopeButtonText()
-{
-    const auto* enabled = processor.getValueTreeState().getRawParameterValue
-                          (envelopeEnabledParameterId);
-    envelopeButton.setButtonText (enabled != nullptr && enabled->load() >= 0.5f
-                                      ? "ENVELOPE: ON"
-                                      : "ENVELOPE: OFF");
 }
 
 void TapeStopperAudioProcessorEditor::updateMuteAtText()
@@ -1969,16 +2861,6 @@ void TapeStopperAudioProcessorEditor::updateMuteAtText()
 void TapeStopperAudioProcessorEditor::updateBottomControlText()
 {
     auto& state = processor.getValueTreeState();
-    const juce::StringArray curveNames { "LINEAR", "GENTLE", "STEEP", "S-CURVE" };
-
-    const auto curveText = [&state, &curveNames] (const char* parameterId)
-    {
-        const auto* value = state.getRawParameterValue (parameterId);
-        const auto index = juce::jlimit (0, curveNames.size() - 1,
-                                         value != nullptr
-                                             ? juce::roundToInt (value->load()) : 0);
-        return curveNames[index];
-    };
 
     const auto percentageText = [&state] (const char* parameterId,
                                           const juce::String& name)
@@ -1988,8 +2870,12 @@ void TapeStopperAudioProcessorEditor::updateBottomControlText()
         return name + ": " + juce::String (percentage) + "%";
     };
 
-    downCurveButton.setButtonText ("DOWN: " + curveText (downCurveParameterId));
-    upCurveButton.setButtonText ("UP: " + curveText (upCurveParameterId));
+    filterAmountValueLabel.setText
+        (percentageText (filterAmountParameterId, "FLTR AMT"),
+         juce::dontSendNotification);
+    volumeAmountValueLabel.setText
+        (percentageText (volumeAmountParameterId, "VOL AMT"),
+         juce::dontSendNotification);
     driveValueLabel.setText (percentageText (driveParameterId, "DRIVE"),
                              juce::dontSendNotification);
     wowValueLabel.setText (percentageText (wowParameterId, "WOW"),
@@ -2031,6 +2917,15 @@ void TapeStopperAudioProcessorEditor::updateMotionButtonColours()
     downButton.setColour (juce::TextButton::buttonOnColourId, down);
 }
 
+void TapeStopperAudioProcessorEditor::updateRetriggerButtonColour()
+{
+    const auto colour = processor.isRetriggerActive()
+                            ? juce::Colour (0xff168bd4)
+                            : juce::Colour (0xffc2c4c3);
+    retriggerButton.setColour (juce::TextButton::buttonColourId, colour);
+    retriggerButton.setColour (juce::TextButton::buttonOnColourId, colour);
+}
+
 void TapeStopperAudioProcessorEditor::paint (juce::Graphics& g)
 {
     const auto scale = static_cast<float> (getWidth()) / designWidth;
@@ -2052,13 +2947,6 @@ void TapeStopperAudioProcessorEditor::paint (juce::Graphics& g)
     drawPanel (g, { 262.0f, 32.0f, 388.0f, 178.0f });
     drawPanel (g, { 660.0f, 32.0f, 130.0f, 178.0f });
 
-    g.setColour (juce::Colour (0xff343637));
-    g.setFont (juce::FontOptions (11.0f, juce::Font::bold));
-    g.drawText (showingSetup ? "SETUP"
-                             : "ENVELOPE - DOWNWARD PITCH +/- 12 SEMITONES",
-                276, 195, 360, 15,
-                juce::Justification::centred);
-
     drawPanel (g, { 10.0f, 220.0f, 780.0f, 68.0f });
 }
 
@@ -2073,7 +2961,7 @@ void TapeStopperAudioProcessorEditor::resized()
                                      juce::roundToInt (height * scale));
     };
 
-    setupButton.setBounds (scaled (758, 2, 27, 19));
+    setupButton.setBounds (scaled (770, 2, 27, 19));
     if (mainTrigger != nullptr)
         mainTrigger->setBounds (scaled (20, 45, 145, 110));
     if (presetSection != nullptr)
@@ -2082,34 +2970,42 @@ void TapeStopperAudioProcessorEditor::resized()
     downButton.setBounds (scaled (180, 75, 60, 27));
     triggerModeButton.setBounds (scaled (180, 107, 60, 27));
     timingModeButton.setBounds (scaled (180, 139, 60, 27));
+    retriggerButton.setBounds (scaled (180, 171, 60, 27));
     if (timingBar != nullptr)
-        timingBar->setBounds (scaled (274, 45, 364, 48));
-    envelopeButton.setBounds (scaled (672, 43, 106, 27));
-    envelopeResetButton.setBounds (scaled (672, 75, 106, 27));
+        timingBar->setBounds (scaled (274, 42, 364, 46));
+    envelopeResetButton.setBounds (scaled (672, 43, 106, 27));
     if (envelopeEditor != nullptr)
-        envelopeEditor->setBounds (scaled (274, 94, 364, 103));
+        envelopeEditor->setBounds (scaled (274, 87, 364, 120));
     if (setupPanel != nullptr)
         setupPanel->setBounds (scaled (274, 40, 364, 150));
-    muteAtSlider.setBounds (scaled (682, 105, 86, 70));
+    muteAtSlider.setBounds (scaled (682, 92, 86, 76));
     muteAtValueLabel.setFont (juce::FontOptions (12.0f * scale, juce::Font::bold));
     muteAtValueLabel.setBounds (scaled (670, 184, 110, 18));
 
-    downCurveButton.setBounds (scaled (20, 240, 128, 29));
-    upCurveButton.setBounds (scaled (156, 240, 128, 29));
+    sequencerViewButton.setBounds (scaled (20, 241, 52, 27));
+    if (sequencerEnableLed != nullptr)
+        sequencerEnableLed->setBounds (scaled (80, 246, 17, 17));
+    if (sequencerPanel != nullptr)
+        sequencerPanel->setBounds (scaled (98, 225, 682, 58));
 
-    driveSlider.setBounds (scaled (289, 223, 62, 43));
-    wowSlider.setBounds (scaled (388, 223, 62, 43));
-    flutterSlider.setBounds (scaled (487, 223, 62, 43));
-    fluxSlider.setBounds (scaled (586, 223, 62, 43));
-    mixSlider.setBounds (scaled (685, 223, 62, 43));
+    filterAmountSlider.setBounds (scaled (138, 223, 62, 43));
+    volumeAmountSlider.setBounds (scaled (235, 223, 62, 43));
+    driveSlider.setBounds (scaled (332, 223, 62, 43));
+    wowSlider.setBounds (scaled (429, 223, 62, 43));
+    flutterSlider.setBounds (scaled (526, 223, 62, 43));
+    fluxSlider.setBounds (scaled (623, 223, 62, 43));
+    mixSlider.setBounds (scaled (720, 223, 62, 43));
 
-    for (auto* label : { &driveValueLabel, &wowValueLabel,
+    for (auto* label : { &filterAmountValueLabel, &volumeAmountValueLabel,
+                         &driveValueLabel, &wowValueLabel,
                          &flutterValueLabel, &fluxValueLabel, &mixValueLabel })
         label->setFont (juce::FontOptions (11.0f * scale, juce::Font::bold));
 
-    driveValueLabel.setBounds (scaled (273, 266, 94, 16));
-    wowValueLabel.setBounds (scaled (372, 266, 94, 16));
-    flutterValueLabel.setBounds (scaled (471, 266, 94, 16));
-    fluxValueLabel.setBounds (scaled (570, 266, 94, 16));
-    mixValueLabel.setBounds (scaled (669, 266, 94, 16));
+    filterAmountValueLabel.setBounds (scaled (122, 266, 94, 16));
+    volumeAmountValueLabel.setBounds (scaled (219, 266, 94, 16));
+    driveValueLabel.setBounds (scaled (316, 266, 94, 16));
+    wowValueLabel.setBounds (scaled (413, 266, 94, 16));
+    flutterValueLabel.setBounds (scaled (510, 266, 94, 16));
+    fluxValueLabel.setBounds (scaled (607, 266, 94, 16));
+    mixValueLabel.setBounds (scaled (712, 266, 78, 16));
 }

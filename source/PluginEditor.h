@@ -19,12 +19,13 @@ private:
     void timerCallback() override;
     void updateTriggerModeText();
     void updateTimingModeText();
-    void updateEnvelopeButtonText();
     void updateMuteAtText();
     void updateBottomControlText();
     void updateMotionButtonColours();
+    void updateRetriggerButtonColour();
     void savePortableSettings();
     void showSetupPanel (bool shouldShow);
+    void showSequencerPanel (bool shouldShow);
 
     TapeStopperAudioProcessor& processor;
     std::unique_ptr<juce::LookAndFeel_V4> smallButtonLookAndFeel;
@@ -35,17 +36,20 @@ private:
     juce::TextButton downButton { "DOWN" };
     juce::TextButton triggerModeButton;
     juce::TextButton timingModeButton;
-    juce::TextButton envelopeButton;
+    juce::TextButton retriggerButton { "RETRIG" };
     juce::TextButton envelopeResetButton { "ENV RESET" };
-    juce::TextButton downCurveButton;
-    juce::TextButton upCurveButton;
+    juce::TextButton sequencerViewButton { "SEQ" };
     juce::Slider muteAtSlider;
+    juce::Slider filterAmountSlider;
+    juce::Slider volumeAmountSlider;
     juce::Slider driveSlider;
     juce::Slider wowSlider;
     juce::Slider flutterSlider;
     juce::Slider fluxSlider;
     juce::Slider mixSlider;
     juce::Label muteAtValueLabel;
+    juce::Label filterAmountValueLabel;
+    juce::Label volumeAmountValueLabel;
     juce::Label driveValueLabel;
     juce::Label wowValueLabel;
     juce::Label flutterValueLabel;
@@ -57,10 +61,15 @@ private:
     std::unique_ptr<juce::Component> envelopeEditor;
     std::unique_ptr<juce::Component> setupPanel;
     std::unique_ptr<juce::Component> presetSection;
+    std::unique_ptr<juce::Component> sequencerEnableLed;
+    std::unique_ptr<juce::Component> sequencerPanel;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> upAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> downAttachment;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> envelopeAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> muteAtAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>
+        filterAmountAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>
+        volumeAmountAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> driveAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> wowAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> flutterAttachment;
@@ -71,6 +80,7 @@ private:
     int savedEditorWidth = 0;
     int stableResizeTicks = 0;
     bool showingSetup = false;
+    bool showingSequencer = false;
 
     static constexpr int designWidth = 800;
     static constexpr int designHeight = 300;

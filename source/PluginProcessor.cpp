@@ -17,13 +17,27 @@ constexpr auto timingModeParameterId = "timingMode";
 constexpr auto downSyncDivisionParameterId = "downSyncDivision";
 constexpr auto upSyncDivisionParameterId = "upSyncDivision";
 constexpr auto envelopeEnabledParameterId = "envelopeEnabled";
-constexpr auto downCurveParameterId = "downCurve";
-constexpr auto upCurveParameterId = "upCurve";
+constexpr auto pitchCurveEnabledParameterId = "pitchCurveEnabled";
+constexpr auto filterCurveEnabledParameterId = "filterCurveEnabled";
+constexpr auto volumeCurveEnabledParameterId = "volumeCurveEnabled";
+constexpr auto filterAmountParameterId = "filterAmount";
+constexpr auto volumeAmountParameterId = "volumeAmount";
 constexpr auto driveParameterId = "drive";
 constexpr auto wowParameterId = "wow";
 constexpr auto flutterParameterId = "flutter";
 constexpr auto fluxParameterId = "flux";
 constexpr auto mixParameterId = "mix";
+constexpr auto sequencerEnabledParameterId = "sequencerEnabled";
+constexpr auto sequencerClockModeParameterId = "sequencerClockMode";
+constexpr auto sequencerResolutionParameterId = "sequencerResolution";
+constexpr auto sequencerFreeRateParameterId = "sequencerFreeRate";
+constexpr auto sequencerLengthParameterId = "sequencerLength";
+constexpr auto sequencerOffsetParameterId = "sequencerOffset";
+
+juce::String sequencerStepParameterId (int stepIndex)
+{
+    return "seqStep" + juce::String (stepIndex + 1);
+}
 
 juce::String envelopeXParameterId (int pointIndex)
 {
@@ -35,24 +49,56 @@ juce::String envelopeYParameterId (int pointIndex)
     return "envY" + juce::String (pointIndex);
 }
 
-juce::StringArray makeSyncDivisionNames()
+juce::String curvePointParameterId (const juce::String& target,
+                                    const juce::String& direction,
+                                    int pointIndex)
 {
-    return { "4 BAR", "2 BAR", "1 BAR", "1/2", "1/3",
-             "1/4", "1/6", "1/8", "1/16", "1/24", "1/32",
-             "1/48", "1/64" };
+    return target + direction + "Curve" + juce::String (pointIndex + 1);
 }
 
-float shapeTransition (float progress, int curveIndex) noexcept
+juce::StringArray makeSyncDivisionNames()
 {
-    const auto p = juce::jlimit (0.0f, 1.0f, progress);
+    return { "4 BAR", "2 BAR", "1 BAR", "1/2", "1/2T",
+             "1/4", "1/4T", "1/8", "1/16", "1/16T", "1/32",
+             "1/32T", "1/64" };
+}
 
-    switch (curveIndex)
-    {
-        case 1:  return p * p;                         // Gentle start.
-        case 2:  return 1.0f - (1.0f - p) * (1.0f - p); // Steep start.
-        case 3:  return p * p * (3.0f - 2.0f * p);    // Smooth S-curve.
-        default: return p;
-    }
+juce::StringArray makeSequencerResolutionNames()
+{
+    return { "1/2", "1/4", "1/8", "1/8T", "1/16", "1/16T",
+             "1/32", "1/32T", "1/64", "1/64T", "1/128" };
+}
+
+float evaluateCurve (const std::array<float,
+                                      TapeStopperAudioProcessor::numCurveControlPoints>& controls,
+                     float position) noexcept
+{
+    constexpr auto numValues = TapeStopperAudioProcessor::numCurveControlPoints + 2;
+    std::array<float, numValues> values {};
+    values.front() = 0.0f;
+    values.back() = 1.0f;
+    for (int point = 0; point < TapeStopperAudioProcessor::numCurveControlPoints;
+         ++point)
+        values[static_cast<size_t> (point + 1)]
+            = juce::jlimit (0.0f, 1.0f, controls[static_cast<size_t> (point)]);
+
+    const auto x = juce::jlimit (0.0f, 1.0f, position)
+                   * static_cast<float> (numValues - 1);
+    const auto segment = juce::jlimit
+        (0, numValues - 2, static_cast<int> (std::floor (x)));
+    const auto t = juce::jlimit (0.0f, 1.0f, x - static_cast<float> (segment));
+    const auto p0 = values[static_cast<size_t> (juce::jmax (0, segment - 1))];
+    const auto p1 = values[static_cast<size_t> (segment)];
+    const auto p2 = values[static_cast<size_t> (segment + 1)];
+    const auto p3 = values[static_cast<size_t>
+                           (juce::jmin (numValues - 1, segment + 2))];
+    const auto t2 = t * t;
+    const auto t3 = t2 * t;
+    const auto result = 0.5f * ((2.0f * p1)
+                               + (-p0 + p2) * t
+                               + (2.0f * p0 - 5.0f * p1 + 4.0f * p2 - p3) * t2
+                               + (-p0 + 3.0f * p1 - 3.0f * p2 + p3) * t3);
+    return juce::jlimit (0.0f, 1.0f, result);
 }
 }
 
@@ -71,7 +117,7 @@ TapeStopperAudioProcessor::TapeStopperAudioProcessor()
                                   std::memory_order_relaxed);
 
     for (auto& sample : waveformSamples)
-        sample.store (0.0f, std::memory_order_relaxed);
+        sample.store (1.0f, std::memory_order_relaxed);
 
     envelopeEnabledValue = parameters.getRawParameterValue (envelopeEnabledParameterId);
 
@@ -82,6 +128,27 @@ TapeStopperAudioProcessor::TapeStopperAudioProcessor()
     for (int point = 0; point < numEnvelopePoints; ++point)
         envelopeYValues[static_cast<size_t> (point)]
             = parameters.getRawParameterValue (envelopeYParameterId (point));
+
+    for (int point = 0; point < numCurveControlPoints; ++point)
+    {
+        const auto index = static_cast<size_t> (point);
+        pitchDownCurveValues[index] = parameters.getRawParameterValue
+                                      (curvePointParameterId ("pitch", "Down", point));
+        pitchUpCurveValues[index] = parameters.getRawParameterValue
+                                    (curvePointParameterId ("pitch", "Up", point));
+        filterDownCurveValues[index] = parameters.getRawParameterValue
+                                       (curvePointParameterId ("filter", "Down", point));
+        filterUpCurveValues[index] = parameters.getRawParameterValue
+                                     (curvePointParameterId ("filter", "Up", point));
+        volumeDownCurveValues[index] = parameters.getRawParameterValue
+                                       (curvePointParameterId ("volume", "Down", point));
+        volumeUpCurveValues[index] = parameters.getRawParameterValue
+                                     (curvePointParameterId ("volume", "Up", point));
+    }
+
+    for (int step = 0; step < numSequencerSteps; ++step)
+        sequencerStepValues[static_cast<size_t> (step)]
+            = parameters.getRawParameterValue (sequencerStepParameterId (step));
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout
@@ -116,12 +183,21 @@ TapeStopperAudioProcessor::createParameterLayout()
     layout.add (std::make_unique<juce::AudioParameterChoice>
                 (juce::ParameterID { upSyncDivisionParameterId, 1 }, "Up Sync Division",
                  makeSyncDivisionNames(), 5));
-    layout.add (std::make_unique<juce::AudioParameterChoice>
-                (juce::ParameterID { downCurveParameterId, 1 }, "Down Curve",
-                 juce::StringArray { "Linear", "Gentle", "Steep", "S-Curve" }, 0));
-    layout.add (std::make_unique<juce::AudioParameterChoice>
-                (juce::ParameterID { upCurveParameterId, 1 }, "Up Curve",
-                 juce::StringArray { "Linear", "Gentle", "Steep", "S-Curve" }, 0));
+    layout.add (std::make_unique<juce::AudioParameterBool>
+                (juce::ParameterID { pitchCurveEnabledParameterId, 1 },
+                 "Pitch Curve Enabled", true));
+    layout.add (std::make_unique<juce::AudioParameterBool>
+                (juce::ParameterID { filterCurveEnabledParameterId, 1 },
+                 "Filter Curve Enabled", false));
+    layout.add (std::make_unique<juce::AudioParameterBool>
+                (juce::ParameterID { volumeCurveEnabledParameterId, 1 },
+                 "Volume Curve Enabled", false));
+    layout.add (std::make_unique<juce::AudioParameterFloat>
+                (juce::ParameterID { filterAmountParameterId, 1 }, "Filter Amount",
+                 juce::NormalisableRange<float> { 0.0f, 100.0f, 1.0f }, 100.0f));
+    layout.add (std::make_unique<juce::AudioParameterFloat>
+                (juce::ParameterID { volumeAmountParameterId, 1 }, "Volume Amount",
+                 juce::NormalisableRange<float> { 0.0f, 100.0f, 1.0f }, 100.0f));
     layout.add (std::make_unique<juce::AudioParameterFloat>
                 (juce::ParameterID { driveParameterId, 1 }, "Drive",
                  juce::NormalisableRange<float> { 0.0f, 100.0f, 1.0f }, 0.0f));
@@ -139,7 +215,54 @@ TapeStopperAudioProcessor::createParameterLayout()
                  juce::NormalisableRange<float> { 0.0f, 100.0f, 1.0f }, 100.0f));
     layout.add (std::make_unique<juce::AudioParameterBool>
                 (juce::ParameterID { envelopeEnabledParameterId, 1 },
-                 "Envelope Enabled", false));
+                 "Global Envelope Enabled", false));
+    layout.add (std::make_unique<juce::AudioParameterBool>
+                (juce::ParameterID { sequencerEnabledParameterId, 1 },
+                 "Sequencer Enabled", false));
+    layout.add (std::make_unique<juce::AudioParameterChoice>
+                (juce::ParameterID { sequencerClockModeParameterId, 1 },
+                 "Sequencer Clock", juce::StringArray { "Sync", "Free" }, 0));
+    layout.add (std::make_unique<juce::AudioParameterChoice>
+                (juce::ParameterID { sequencerResolutionParameterId, 1 },
+                 "Sequencer Resolution", makeSequencerResolutionNames(), 4));
+    layout.add (std::make_unique<juce::AudioParameterFloat>
+                (juce::ParameterID { sequencerFreeRateParameterId, 1 },
+                 "Sequencer Free Rate",
+                 juce::NormalisableRange<float> { 25.0f, 2000.0f, 1.0f, 0.45f },
+                 125.0f));
+    layout.add (std::make_unique<juce::AudioParameterInt>
+                (juce::ParameterID { sequencerLengthParameterId, 1 },
+                 "Sequencer Length", 1, numSequencerSteps, numSequencerSteps));
+    layout.add (std::make_unique<juce::AudioParameterInt>
+                (juce::ParameterID { sequencerOffsetParameterId, 1 },
+                 "Sequencer Offset", 0, numSequencerSteps - 1, 0));
+
+    for (int step = 0; step < numSequencerSteps; ++step)
+        layout.add (std::make_unique<juce::AudioParameterBool>
+                    (juce::ParameterID { sequencerStepParameterId (step), 1 },
+                     "Sequencer Step " + juce::String (step + 1), false));
+
+    for (const auto& target : { juce::String ("pitch"), juce::String ("filter"),
+                                juce::String ("volume") })
+    {
+        for (const auto& direction : { juce::String ("Down"), juce::String ("Up") })
+        {
+            for (int point = 0; point < numCurveControlPoints; ++point)
+            {
+                const auto defaultValue = static_cast<float> (point + 1)
+                                          / static_cast<float>
+                                              (numCurveControlPoints + 1);
+                layout.add (std::make_unique<juce::AudioParameterFloat>
+                            (juce::ParameterID
+                                { curvePointParameterId (target, direction, point), 1 },
+                             target.substring (0, 1).toUpperCase()
+                                 + target.substring (1) + " " + direction
+                                 + " Curve Point " + juce::String (point + 1),
+                             juce::NormalisableRange<float> { 0.0f, 1.0f },
+                             defaultValue));
+            }
+        }
+    }
 
     for (int point = 1; point < numEnvelopePoints - 1; ++point)
     {
@@ -187,6 +310,12 @@ juce::String TapeStopperAudioProcessor::syncDivisionName (int divisionIndex)
     return makeSyncDivisionNames()[juce::jlimit (0, numSyncDivisions - 1, divisionIndex)];
 }
 
+juce::String TapeStopperAudioProcessor::sequencerResolutionName (int resolutionIndex)
+{
+    return makeSequencerResolutionNames()
+        [juce::jlimit (0, numSequencerResolutions - 1, resolutionIndex)];
+}
+
 void TapeStopperAudioProcessor::prepareToPlay (double sampleRate, int)
 {
     currentSampleRate = sampleRate > 0.0 ? sampleRate : 48000.0;
@@ -197,6 +326,8 @@ void TapeStopperAudioProcessor::prepareToPlay (double sampleRate, int)
     characterBuffer.assign
         (static_cast<size_t> (juce::jmax (1, getTotalNumInputChannels())),
          std::vector<float> (static_cast<size_t> (characterBufferSize), 0.0f));
+    envelopeFilterStates.assign
+        (static_cast<size_t> (juce::jmax (1, getTotalNumInputChannels())), 0.0f);
 
     writePosition = 0;
     readPosition = 0.0;
@@ -209,18 +340,26 @@ void TapeStopperAudioProcessor::prepareToPlay (double sampleRate, int)
     fluxRandomState = 0x7f4a7c15u;
     motionState = MotionState::fullSpeed;
     currentSpeed = 1.0f;
-    transitionStartSpeed = 1.0f;
+    transitionStartPosition = 0.0f;
     transitionPosition = 0;
     transitionLength = 1;
-    transitionCurveIndex = 0;
     reentryPosition = 0;
     reentryLength = juce::jmax (1, juce::roundToInt (currentSampleRate * 0.020));
     previousEngage = false;
+    previousHostPlaying = false;
+    freeSequencerSamplePosition = 0.0;
     currentMuteGain = fullSpeedMuteEnabled.load (std::memory_order_relaxed) ? 0.0f : 1.0f;
     muteSmoothingAmount = 1.0f - std::exp (-1.0f
                                            / static_cast<float> (currentSampleRate * 0.005));
     characterSmoothingAmount = 1.0f - std::exp
                                (-1.0f / static_cast<float> (currentSampleRate * 0.020));
+    envelopeEffectSmoothingAmount = 1.0f - std::exp
+                                    (-1.0f / static_cast<float>
+                                                  (currentSampleRate * 0.005));
+    currentEnvelopeFilterAmount = 0.0f;
+    currentEnvelopeVolumeGain = 1.0f;
+    currentPitchCurveMix = parameters.getRawParameterValue
+                           (pitchCurveEnabledParameterId)->load() >= 0.5f ? 1.0f : 0.0f;
     fluxVariationSmoothingAmount = 1.0f - std::exp
                                    (-1.0f / static_cast<float> (currentSampleRate * 0.008));
     currentDriveAmount = parameters.getRawParameterValue (driveParameterId)->load() / 100.0f;
@@ -231,12 +370,12 @@ void TapeStopperAudioProcessor::prepareToPlay (double sampleRate, int)
     visualPosition.store (0.0f, std::memory_order_relaxed);
     motionDirection.store (MotionDirection::inactive, std::memory_order_relaxed);
     currentBpm.store (120.0f, std::memory_order_relaxed);
-    waveformCaptureInterval = juce::jmax
-                              (1, juce::roundToInt (currentSampleRate / 2000.0));
-    waveformSamplesUntilCapture = waveformCaptureInterval;
-    waveformWritePosition.store (0, std::memory_order_relaxed);
+    retriggerRequested.store (false, std::memory_order_relaxed);
+    retriggerActive.store (false, std::memory_order_relaxed);
+    sequencerGateActive.store (false, std::memory_order_relaxed);
+    currentSequencerStep.store (-1, std::memory_order_relaxed);
     for (auto& sample : waveformSamples)
-        sample.store (0.0f, std::memory_order_relaxed);
+        sample.store (1.0f, std::memory_order_relaxed);
 }
 
 void TapeStopperAudioProcessor::releaseResources()
@@ -257,20 +396,21 @@ bool TapeStopperAudioProcessor::isBusesLayoutSupported (const BusesLayout& layou
 
 void TapeStopperAudioProcessor::beginSlowdown (bool enabled)
 {
+    const auto startPosition = visualPosition.load (std::memory_order_relaxed);
+    resetWaveformTrace (currentSpeed, startPosition);
+
     if (! enabled)
     {
         motionState = MotionState::stopped;
         currentSpeed = 0.0f;
         visualPosition.store (1.0f, std::memory_order_relaxed);
         motionDirection.store (MotionDirection::inactive, std::memory_order_relaxed);
+        recordWaveformTrace (0.0f, 1.0f);
         return;
     }
 
-    transitionStartSpeed = currentSpeed;
+    transitionStartPosition = startPosition;
     transitionPosition = 0;
-    transitionCurveIndex = juce::roundToInt
-                           (parameters.getRawParameterValue
-                                (downCurveParameterId)->load());
 
     const auto isSynced = parameters.getRawParameterValue (timingModeParameterId)->load() >= 0.5f;
     const auto durationSeconds = isSynced
@@ -282,13 +422,18 @@ void TapeStopperAudioProcessor::beginSlowdown (bool enabled)
                                            (parameters.getRawParameterValue
                                                (downSpeedParameterId)->load());
     const auto fullLength = durationSeconds * currentSampleRate;
-    transitionLength = juce::jmax (1, juce::roundToInt (fullLength * currentSpeed));
+    transitionLength = juce::jmax
+                       (1, juce::roundToInt
+                               (fullLength * (1.0f - transitionStartPosition)));
     motionState = MotionState::slowing;
     motionDirection.store (MotionDirection::down, std::memory_order_relaxed);
 }
 
 void TapeStopperAudioProcessor::beginSpeedup (bool enabled)
 {
+    const auto startPosition = visualPosition.load (std::memory_order_relaxed);
+    resetWaveformTrace (currentSpeed, startPosition);
+
     if (! enabled)
     {
         motionState = MotionState::fullSpeed;
@@ -296,14 +441,12 @@ void TapeStopperAudioProcessor::beginSpeedup (bool enabled)
         readPosition = static_cast<double> (writePosition);
         visualPosition.store (0.0f, std::memory_order_relaxed);
         motionDirection.store (MotionDirection::inactive, std::memory_order_relaxed);
+        recordWaveformTrace (1.0f, 0.0f);
         return;
     }
 
-    transitionStartSpeed = currentSpeed;
+    transitionStartPosition = startPosition;
     transitionPosition = 0;
-    transitionCurveIndex = juce::roundToInt
-                           (parameters.getRawParameterValue
-                                (upCurveParameterId)->load());
 
     const auto isSynced = parameters.getRawParameterValue (timingModeParameterId)->load() >= 0.5f;
     const auto durationSeconds = isSynced
@@ -315,7 +458,8 @@ void TapeStopperAudioProcessor::beginSpeedup (bool enabled)
                                            (parameters.getRawParameterValue
                                                (upSpeedParameterId)->load());
     const auto fullLength = durationSeconds * currentSampleRate;
-    transitionLength = juce::jmax (1, juce::roundToInt (fullLength * (1.0f - currentSpeed)));
+    transitionLength = juce::jmax
+                       (1, juce::roundToInt (fullLength * transitionStartPosition));
     motionState = MotionState::speeding;
     motionDirection.store (MotionDirection::up, std::memory_order_relaxed);
 }
@@ -338,9 +482,9 @@ void TapeStopperAudioProcessor::advanceMotionState()
             const auto progress = juce::jlimit (0.0f, 1.0f,
                                                 static_cast<float> (transitionPosition)
                                                     / static_cast<float> (transitionLength));
-            const auto shapedProgress = shapeTransition (progress, transitionCurveIndex);
-            currentSpeed = transitionStartSpeed * (1.0f - shapedProgress);
-            visualPosition.store (1.0f - currentSpeed, std::memory_order_relaxed);
+            const auto position = transitionStartPosition
+                                  + (1.0f - transitionStartPosition) * progress;
+            visualPosition.store (position, std::memory_order_relaxed);
 
             if (transitionPosition >= transitionLength)
             {
@@ -348,6 +492,7 @@ void TapeStopperAudioProcessor::advanceMotionState()
                 currentSpeed = 0.0f;
                 visualPosition.store (1.0f, std::memory_order_relaxed);
                 motionDirection.store (MotionDirection::inactive, std::memory_order_relaxed);
+                recordWaveformTrace (0.0f, 1.0f);
             }
             break;
         }
@@ -358,13 +503,14 @@ void TapeStopperAudioProcessor::advanceMotionState()
             const auto progress = juce::jlimit (0.0f, 1.0f,
                                                 static_cast<float> (transitionPosition)
                                                     / static_cast<float> (transitionLength));
-            const auto shapedProgress = shapeTransition (progress, transitionCurveIndex);
-            currentSpeed = transitionStartSpeed
-                           + (1.0f - transitionStartSpeed) * shapedProgress;
-            visualPosition.store (1.0f - currentSpeed, std::memory_order_relaxed);
+            const auto position = transitionStartPosition * (1.0f - progress);
+            visualPosition.store (position, std::memory_order_relaxed);
 
             if (transitionPosition >= transitionLength)
+            {
+                recordWaveformTrace (1.0f, 0.0f);
                 beginReentry();
+            }
             break;
         }
 
@@ -376,6 +522,7 @@ void TapeStopperAudioProcessor::advanceMotionState()
                 currentSpeed = 1.0f;
                 readPosition = static_cast<double> (writePosition);
                 visualPosition.store (0.0f, std::memory_order_relaxed);
+                retriggerActive.store (false, std::memory_order_relaxed);
             }
             break;
 
@@ -437,6 +584,33 @@ float TapeStopperAudioProcessor::nextFluxRandomUnit() noexcept
            / static_cast<float> (0x00ffffffu);
 }
 
+void TapeStopperAudioProcessor::resetWaveformTrace (float speed,
+                                                     float position) noexcept
+{
+    if (! waveformDisplayEnabled.load (std::memory_order_relaxed))
+        return;
+
+    for (auto& sample : waveformSamples)
+        sample.store (-1.0f, std::memory_order_relaxed);
+
+    recordWaveformTrace (speed, position);
+}
+
+void TapeStopperAudioProcessor::recordWaveformTrace (float speed,
+                                                      float position) noexcept
+{
+    if (! waveformDisplayEnabled.load (std::memory_order_relaxed))
+        return;
+
+    const auto index = juce::jlimit
+                       (0, waveformSampleCount - 1,
+                        juce::roundToInt (juce::jlimit (0.0f, 1.0f, position)
+                                          * static_cast<float>
+                                              (waveformSampleCount - 1)));
+    waveformSamples[static_cast<size_t> (index)].store
+        (juce::jlimit (0.0f, 1.0f, speed), std::memory_order_relaxed);
+}
+
 void TapeStopperAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
                                                juce::MidiBuffer&)
 {
@@ -452,16 +626,27 @@ void TapeStopperAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
         || characterBufferSize < 2 || characterBuffer.empty())
         return;
 
+    auto hostPlaying = false;
+    auto hasPpqPosition = false;
+    auto blockPpqPosition = 0.0;
+
     if (auto* playHead = getPlayHead())
     {
         if (const auto position = playHead->getPosition())
         {
             if (const auto bpm = position->getBpm())
                 currentBpm.store (static_cast<float> (*bpm), std::memory_order_relaxed);
+            if (const auto ppq = position->getPpqPosition())
+            {
+                hasPpqPosition = true;
+                blockPpqPosition = *ppq;
+            }
+            hostPlaying = position->getIsPlaying();
         }
     }
 
-    const auto engage = parameters.getRawParameterValue (engageParameterId)->load() >= 0.5f;
+    const auto manualEngage = parameters.getRawParameterValue
+                              (engageParameterId)->load() >= 0.5f;
     const auto downEnabled = parameters.getRawParameterValue (downEnabledParameterId)->load() >= 0.5f;
     const auto upEnabled = parameters.getRawParameterValue (upEnabledParameterId)->load() >= 0.5f;
     const auto muteAt = juce::jlimit (0.0f, 1.0f,
@@ -469,6 +654,20 @@ void TapeStopperAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
                                          / 100.0f);
     const auto envelopeEnabled = envelopeEnabledValue != nullptr
                                  && envelopeEnabledValue->load() >= 0.5f;
+    const auto pitchCurveEnabled = parameters.getRawParameterValue
+                                   (pitchCurveEnabledParameterId)->load() >= 0.5f;
+    const auto filterCurveEnabled = parameters.getRawParameterValue
+                                    (filterCurveEnabledParameterId)->load() >= 0.5f;
+    const auto volumeCurveEnabled = parameters.getRawParameterValue
+                                    (volumeCurveEnabledParameterId)->load() >= 0.5f;
+    const auto filterAmount = juce::jlimit
+                              (0.0f, 1.0f,
+                               parameters.getRawParameterValue
+                                   (filterAmountParameterId)->load() / 100.0f);
+    const auto volumeAmount = juce::jlimit
+                              (0.0f, 1.0f,
+                               parameters.getRawParameterValue
+                                   (volumeAmountParameterId)->load() / 100.0f);
     const auto targetDriveAmount = juce::jlimit
                                    (0.0f, 1.0f,
                                     parameters.getRawParameterValue (driveParameterId)->load()
@@ -491,6 +690,65 @@ void TapeStopperAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
                                       / 100.0f);
     const auto captureWaveform = waveformDisplayEnabled.load
                                  (std::memory_order_relaxed);
+    const auto sequencerEnabled = parameters.getRawParameterValue
+                                  (sequencerEnabledParameterId)->load() >= 0.5f;
+    const auto sequencerUsesFreeClock = parameters.getRawParameterValue
+                                        (sequencerClockModeParameterId)->load() >= 0.5f;
+    const auto sequencerResolution = juce::jlimit
+        (0, numSequencerResolutions - 1,
+         juce::roundToInt (parameters.getRawParameterValue
+                               (sequencerResolutionParameterId)->load()));
+    const auto sequencerFreeRateMs = juce::jlimit
+        (25.0f, 2000.0f,
+         parameters.getRawParameterValue (sequencerFreeRateParameterId)->load());
+    const auto sequencerLength = juce::jlimit
+        (1, numSequencerSteps,
+         juce::roundToInt (parameters.getRawParameterValue
+                               (sequencerLengthParameterId)->load()));
+    const auto sequencerOffset = juce::jlimit
+        (0, numSequencerSteps - 1,
+         juce::roundToInt (parameters.getRawParameterValue
+                               (sequencerOffsetParameterId)->load()));
+    std::array<bool, numSequencerSteps> sequencerSteps {};
+    for (int step = 0; step < numSequencerSteps; ++step)
+    {
+        const auto* value = sequencerStepValues[static_cast<size_t> (step)];
+        sequencerSteps[static_cast<size_t> (step)]
+            = value != nullptr && value->load() >= 0.5f;
+    }
+
+    const auto sequencerControlsPlay = sequencerEnabled && hostPlaying;
+    static constexpr std::array<double, numSequencerResolutions>
+        sequencerQuarterNoteLengths
+        { 2.0, 1.0, 0.5, 1.0 / 3.0, 0.25, 1.0 / 6.0,
+          0.125, 1.0 / 12.0, 0.0625, 1.0 / 24.0, 0.03125 };
+
+    if (! hostPlaying)
+        freeSequencerSamplePosition = 0.0;
+    else if (! previousHostPlaying)
+        freeSequencerSamplePosition = 0.0;
+
+    const auto loadCurve = [] (const auto& values)
+    {
+        std::array<float, numCurveControlPoints> result {};
+        for (int point = 0; point < numCurveControlPoints; ++point)
+        {
+            const auto* value = values[static_cast<size_t> (point)];
+            result[static_cast<size_t> (point)]
+                = value != nullptr ? juce::jlimit (0.0f, 1.0f, value->load())
+                                   : static_cast<float> (point + 1)
+                                         / static_cast<float>
+                                             (numCurveControlPoints + 1);
+        }
+        return result;
+    };
+
+    const auto pitchDownCurve = loadCurve (pitchDownCurveValues);
+    const auto pitchUpCurve = loadCurve (pitchUpCurveValues);
+    const auto filterDownCurve = loadCurve (filterDownCurveValues);
+    const auto filterUpCurve = loadCurve (filterUpCurveValues);
+    const auto volumeDownCurve = loadCurve (volumeDownCurveValues);
+    const auto volumeUpCurve = loadCurve (volumeUpCurveValues);
 
     std::array<float, numEnvelopePoints> envelopeX {};
     std::array<float, numEnvelopePoints> envelopeY {};
@@ -517,7 +775,7 @@ void TapeStopperAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
         }
     }
 
-    const auto getEnvelopePitchRatio = [&envelopeX, &envelopeY] (float progress)
+    const auto getEnvelopeValue = [&envelopeX, &envelopeY] (float progress)
     {
         const auto position = juce::jlimit (0.0f, 1.0f, progress);
         auto segment = 0;
@@ -532,23 +790,78 @@ void TapeStopperAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
         const auto amount = juce::jlimit (0.0f, 1.0f, (position - x1) / width);
         const auto y1 = envelopeY[static_cast<size_t> (segment)];
         const auto y2 = envelopeY[static_cast<size_t> (segment + 1)];
-        const auto y = y1 + (y2 - y1) * amount;
-        const auto semitones = (0.5f - y) * 24.0f;
-        return std::pow (2.0f, semitones / 12.0f);
+        return y1 + (y2 - y1) * amount;
     };
 
-    if (engage != previousEngage)
+    if (retriggerRequested.exchange (false, std::memory_order_acq_rel))
     {
-        if (engage)
-            beginSlowdown (downEnabled);
-        else
-            beginSpeedup (upEnabled);
+        retriggerActive.store (true, std::memory_order_relaxed);
 
-        previousEngage = engage;
+        // RETRIG is a pulse rather than a DOWN transition: jump immediately
+        // to stopped speed, then use only the current UP settings to recover.
+        beginSlowdown (false);
+        beginSpeedup (upEnabled);
+        if (! upEnabled)
+            retriggerActive.store (false, std::memory_order_relaxed);
     }
 
     for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
     {
+        auto effectiveEngage = manualEngage;
+
+        if (sequencerControlsPlay)
+        {
+            double absoluteStep = 0.0;
+            if (sequencerUsesFreeClock)
+            {
+                const auto stepSamples = juce::jmax
+                    (1.0, currentSampleRate
+                              * static_cast<double> (sequencerFreeRateMs) / 1000.0);
+                absoluteStep = std::floor (freeSequencerSamplePosition / stepSamples);
+            }
+            else
+            {
+                const auto bpm = static_cast<double>
+                                 (currentBpm.load (std::memory_order_relaxed));
+                const auto samplePpq = hasPpqPosition
+                                           ? blockPpqPosition
+                                                 + static_cast<double> (sample) * bpm
+                                                       / (60.0 * currentSampleRate)
+                                           : freeSequencerSamplePosition * bpm
+                                                 / (60.0 * currentSampleRate);
+                absoluteStep = std::floor
+                    (samplePpq
+                     / sequencerQuarterNoteLengths
+                           [static_cast<size_t> (sequencerResolution)]);
+            }
+
+            const auto rawStep = static_cast<std::int64_t> (absoluteStep);
+            auto step = static_cast<int>
+                ((rawStep + sequencerOffset) % static_cast<std::int64_t> (sequencerLength));
+            if (step < 0)
+                step += sequencerLength;
+            currentSequencerStep.store (step, std::memory_order_relaxed);
+            effectiveEngage = sequencerSteps[static_cast<size_t> (step)];
+            sequencerGateActive.store (effectiveEngage, std::memory_order_relaxed);
+        }
+        else
+        {
+            currentSequencerStep.store (-1, std::memory_order_relaxed);
+            sequencerGateActive.store (false, std::memory_order_relaxed);
+        }
+
+        if (effectiveEngage != previousEngage)
+        {
+            retriggerActive.store (false, std::memory_order_relaxed);
+
+            if (effectiveEngage)
+                beginSlowdown (downEnabled);
+            else
+                beginSpeedup (upEnabled);
+
+            previousEngage = effectiveEngage;
+        }
+
         currentDriveAmount += (targetDriveAmount - currentDriveAmount)
                               * characterSmoothingAmount;
         currentWowAmount += (targetWowAmount - currentWowAmount)
@@ -573,6 +886,55 @@ void TapeStopperAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
         const auto transitionPositionNow = visualPosition.load (std::memory_order_relaxed);
         const auto fluxMotionActive = motionState == MotionState::slowing
                                       || motionState == MotionState::speeding;
+        const auto curveMotionActive = motionState == MotionState::slowing
+                                       || motionState == MotionState::stopped
+                                       || motionState == MotionState::speeding;
+        const auto useDownCurves = motionState != MotionState::speeding;
+        const auto pitchCurveAmount = curveMotionActive
+                                          ? evaluateCurve
+                                                (useDownCurves ? pitchDownCurve : pitchUpCurve,
+                                                 transitionPositionNow)
+                                          : 0.0f;
+        const auto filterCurveAmount = curveMotionActive
+                                           ? evaluateCurve
+                                                 (useDownCurves ? filterDownCurve : filterUpCurve,
+                                                  transitionPositionNow)
+                                           : 0.0f;
+        const auto volumeCurveAmount = curveMotionActive
+                                           ? evaluateCurve
+                                                 (useDownCurves ? volumeDownCurve : volumeUpCurve,
+                                                  transitionPositionNow)
+                                           : 0.0f;
+
+        currentPitchCurveMix += ((pitchCurveEnabled ? 1.0f : 0.0f)
+                                 - currentPitchCurveMix)
+                                * envelopeEffectSmoothingAmount;
+        const auto targetPitchSpeed = curveMotionActive
+                                          ? 1.0f - pitchCurveAmount : 1.0f;
+        currentSpeed += (targetPitchSpeed - currentSpeed)
+                        * envelopeEffectSmoothingAmount;
+        const auto targetEnvelopeFilterAmount = filterCurveEnabled
+                                                     ? filterCurveAmount * filterAmount : 0.0f;
+        const auto targetEnvelopeVolumeGain = volumeCurveEnabled
+                                                  ? 1.0f - volumeCurveAmount * volumeAmount
+                                                  : 1.0f;
+        currentEnvelopeFilterAmount += (targetEnvelopeFilterAmount
+                                        - currentEnvelopeFilterAmount)
+                                       * envelopeEffectSmoothingAmount;
+        currentEnvelopeVolumeGain += (targetEnvelopeVolumeGain
+                                      - currentEnvelopeVolumeGain)
+                                     * envelopeEffectSmoothingAmount;
+
+        const auto openCutoff = juce::jmin (20000.0f,
+                                            static_cast<float> (currentSampleRate * 0.45));
+        const auto filterCutoff = openCutoff
+                                  * std::pow (120.0f / openCutoff,
+                                              currentEnvelopeFilterAmount);
+        const auto envelopeFilterCoefficient = 1.0f
+                                               - std::exp
+                                                 (-juce::MathConstants<float>::twoPi
+                                                  * filterCutoff
+                                                  / static_cast<float> (currentSampleRate));
 
         if (fluxMotionActive && currentFluxAmount > 0.000001f)
         {
@@ -640,20 +1002,20 @@ void TapeStopperAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
                                         ? 0.0f : 1.0f;
         currentMuteGain += (targetMuteGain - currentMuteGain) * muteSmoothingAmount;
 
-        auto waveformSample = 0.0f;
-
         for (int channel = 0; channel < inputChannels; ++channel)
         {
             const auto input = buffer.getSample (channel, sample);
             auto wetOutput = input;
 
-            if (motionState != MotionState::fullSpeed)
+            if (currentPitchCurveMix > 0.000001f
+                && motionState != MotionState::fullSpeed)
             {
                 const auto tape = readTapeSample (channel);
-                const auto tapeWithSpeedFade = tape * currentSpeed;
-                wetOutput = motionState == MotionState::reentering
-                                ? tape * (1.0f - reentryMix) + input * reentryMix
-                                : tapeWithSpeedFade;
+                const auto pitchOutput = motionState == MotionState::reentering
+                                             ? tape * (1.0f - reentryMix)
+                                                   + input * reentryMix
+                                             : tape;
+                wetOutput += (pitchOutput - wetOutput) * currentPitchCurveMix;
             }
 
             if (currentDriveAmount > 0.000001f)
@@ -676,27 +1038,22 @@ void TapeStopperAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
                 wetOutput += (modulated - wetOutput) * characterMix;
             }
 
+            auto& envelopeFilterState = envelopeFilterStates
+                                        [static_cast<size_t> (channel)];
+            if (currentEnvelopeFilterAmount > 0.000001f)
+            {
+                envelopeFilterState += envelopeFilterCoefficient
+                                       * (wetOutput - envelopeFilterState);
+                wetOutput = envelopeFilterState;
+            }
+            else
+                envelopeFilterState = wetOutput;
+
+            wetOutput *= currentEnvelopeVolumeGain;
+
             const auto output = (input + (wetOutput - input) * currentMixAmount)
                                 * currentMuteGain;
             buffer.setSample (channel, sample, output);
-            if (captureWaveform)
-                waveformSample += output;
-        }
-
-        if (captureWaveform && inputChannels > 0
-            && --waveformSamplesUntilCapture <= 0)
-        {
-            const auto sampleForDisplay = juce::jlimit
-                                          (-1.0f, 1.0f,
-                                           waveformSample
-                                               / static_cast<float> (inputChannels));
-            const auto position = waveformWritePosition.load
-                                  (std::memory_order_relaxed);
-            waveformSamples[static_cast<size_t> (position)].store
-                (sampleForDisplay, std::memory_order_relaxed);
-            waveformWritePosition.store
-                ((position + 1) % waveformSampleCount, std::memory_order_release);
-            waveformSamplesUntilCapture = waveformCaptureInterval;
         }
 
         characterWritePosition = (characterWritePosition + 1) % characterBufferSize;
@@ -708,38 +1065,60 @@ void TapeStopperAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
         if (flutterPhase >= juce::MathConstants<double>::twoPi)
             flutterPhase -= juce::MathConstants<double>::twoPi;
 
-        if (motionState != MotionState::fullSpeed)
+        if (currentPitchCurveMix > 0.000001f
+            && motionState != MotionState::fullSpeed)
         {
             auto readSpeed = currentSpeed;
 
             if (envelopeEnabled && motionState == MotionState::slowing)
             {
                 const auto progress = transitionPositionNow;
+                const auto semitones = (0.5f - getEnvelopeValue (progress)) * 24.0f;
+                const auto pitchRatio = std::pow (2.0f, semitones / 12.0f);
                 // The read head starts beside the live write head, so it must never
                 // run faster than live playback and wrap into unwritten/stale audio.
                 readSpeed = juce::jlimit (0.0f, 1.0f,
-                                          readSpeed * getEnvelopePitchRatio (progress));
+                                          readSpeed * pitchRatio);
             }
 
-            // Flux always follows the pitch produced above. With the envelope
-            // bypassed that pitch is the normal tape curve; with it enabled the
-            // same instability fluctuates around the envelope-shaped pitch.
+            // Flux follows the Pitch curve and the optional global Envelope.
             if (fluxMotionActive && currentFluxAmount > 0.000001f)
                 readSpeed = juce::jlimit (0.0f, 1.0f,
                                           readSpeed * fluxPitchRatio);
+
+            if (captureWaveform
+                && (motionState == MotionState::slowing
+                    || motionState == MotionState::speeding))
+            {
+                recordWaveformTrace
+                    (1.0f + (readSpeed - 1.0f) * currentPitchCurveMix,
+                     transitionPositionNow);
+            }
 
             readPosition += readSpeed;
             while (readPosition >= tapeBufferSize)
                 readPosition -= tapeBufferSize;
         }
+        else if (captureWaveform
+                 && (motionState == MotionState::slowing
+                     || motionState == MotionState::speeding))
+        {
+            recordWaveformTrace (1.0f, transitionPositionNow);
+        }
 
         writePosition = (writePosition + 1) % tapeBufferSize;
 
-        if (motionState == MotionState::fullSpeed)
+        if (currentPitchCurveMix <= 0.000001f
+            || motionState == MotionState::fullSpeed)
             readPosition = static_cast<double> (writePosition);
 
         advanceMotionState();
+
+        if (hostPlaying)
+            freeSequencerSamplePosition += 1.0;
     }
+
+    previousHostPlaying = hostPlaying;
 }
 
 juce::AudioProcessorEditor* TapeStopperAudioProcessor::createEditor()
@@ -803,7 +1182,7 @@ void TapeStopperAudioProcessor::changeProgramName (int, const juce::String&)
 void TapeStopperAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
     auto state = parameters.copyState();
-    state.setProperty ("schemaVersion", 8, nullptr);
+    state.setProperty ("schemaVersion", 12, nullptr);
 
     if (const auto xml = state.createXml())
         copyXmlToBinary (*xml, destData);
@@ -851,6 +1230,21 @@ bool TapeStopperAudioProcessor::isWaveformDisplayEnabled() const noexcept
     return waveformDisplayEnabled.load (std::memory_order_relaxed);
 }
 
+bool TapeStopperAudioProcessor::isRetriggerActive() const noexcept
+{
+    return retriggerActive.load (std::memory_order_relaxed);
+}
+
+bool TapeStopperAudioProcessor::isSequencerGateActive() const noexcept
+{
+    return sequencerGateActive.load (std::memory_order_relaxed);
+}
+
+int TapeStopperAudioProcessor::getCurrentSequencerStep() const noexcept
+{
+    return currentSequencerStep.load (std::memory_order_relaxed);
+}
+
 void TapeStopperAudioProcessor::setFullSpeedMuteEnabled (bool enabled) noexcept
 {
     fullSpeedMuteEnabled.store (enabled, std::memory_order_relaxed);
@@ -868,10 +1262,20 @@ void TapeStopperAudioProcessor::setWaveformDisplayEnabled (bool enabled) noexcep
 
     if (previous != enabled)
     {
-        waveformWritePosition.store (0, std::memory_order_relaxed);
+        const auto position = visualPosition.load (std::memory_order_relaxed);
+
         for (auto& sample : waveformSamples)
-            sample.store (0.0f, std::memory_order_relaxed);
+            sample.store (enabled && position <= 0.0001f ? 1.0f : -1.0f,
+                          std::memory_order_relaxed);
+
+        if (enabled && position > 0.0001f)
+            recordWaveformTrace (1.0f - position, position);
     }
+}
+
+void TapeStopperAudioProcessor::requestRetrigger() noexcept
+{
+    retriggerRequested.store (true, std::memory_order_release);
 }
 
 void TapeStopperAudioProcessor::copyWaveformSamples
@@ -883,16 +1287,10 @@ void TapeStopperAudioProcessor::copyWaveformSamples
         return;
     }
 
-    const auto writePositionNow = waveformWritePosition.load
-                                  (std::memory_order_acquire);
-
     for (int sample = 0; sample < waveformSampleCount; ++sample)
-    {
-        const auto source = (writePositionNow + sample) % waveformSampleCount;
         destination[static_cast<size_t> (sample)]
-            = waveformSamples[static_cast<size_t> (source)].load
+            = waveformSamples[static_cast<size_t> (sample)].load
                 (std::memory_order_relaxed);
-    }
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()

@@ -48,9 +48,13 @@ public:
     bool isFullSpeedMuteEnabled() const noexcept;
     bool isButtonDisplayReversed() const noexcept;
     bool isWaveformDisplayEnabled() const noexcept;
+    bool isRetriggerActive() const noexcept;
+    bool isSequencerGateActive() const noexcept;
+    int getCurrentSequencerStep() const noexcept;
     void setFullSpeedMuteEnabled (bool enabled) noexcept;
     void setButtonDisplayReversed (bool reversed) noexcept;
     void setWaveformDisplayEnabled (bool enabled) noexcept;
+    void requestRetrigger() noexcept;
     static constexpr int waveformSampleCount = 256;
     void copyWaveformSamples
         (std::array<float, waveformSampleCount>& destination) const noexcept;
@@ -58,8 +62,12 @@ public:
     static float speedControlToSeconds (float controlValue) noexcept;
     static float syncDivisionToSeconds (int divisionIndex, float bpm) noexcept;
     static juce::String syncDivisionName (int divisionIndex);
+    static juce::String sequencerResolutionName (int resolutionIndex);
     static constexpr int numSyncDivisions = 13;
+    static constexpr int numSequencerSteps = 64;
+    static constexpr int numSequencerResolutions = 11;
     static constexpr int numEnvelopePoints = 11;
+    static constexpr int numCurveControlPoints = 5;
 
 private:
     enum class MotionState
@@ -77,6 +85,8 @@ private:
     void beginSpeedup (bool enabled);
     void beginReentry();
     void advanceMotionState();
+    void resetWaveformTrace (float speed, float position) noexcept;
+    void recordWaveformTrace (float speed, float position) noexcept;
     float readTapeSample (int channel) const noexcept;
     float readCharacterSample (int channel, double delayInSamples) const noexcept;
     float nextFluxRandomUnit() noexcept;
@@ -100,6 +110,11 @@ private:
     float currentFluxAmount = 0.0f;
     float currentMixAmount = 1.0f;
     float characterSmoothingAmount = 1.0f;
+    std::vector<float> envelopeFilterStates;
+    float currentEnvelopeFilterAmount = 0.0f;
+    float currentEnvelopeVolumeGain = 1.0f;
+    float currentPitchCurveMix = 1.0f;
+    float envelopeEffectSmoothingAmount = 1.0f;
 
     float currentFluxVariation = 0.0f;
     float targetFluxVariation = 0.0f;
@@ -109,10 +124,9 @@ private:
 
     MotionState motionState = MotionState::fullSpeed;
     float currentSpeed = 1.0f;
-    float transitionStartSpeed = 1.0f;
+    float transitionStartPosition = 0.0f;
     int transitionPosition = 0;
     int transitionLength = 1;
-    int transitionCurveIndex = 0;
     int reentryPosition = 0;
     int reentryLength = 1;
     bool previousEngage = false;
@@ -122,6 +136,16 @@ private:
     std::atomic<float>* envelopeEnabledValue = nullptr;
     std::array<std::atomic<float>*, numEnvelopePoints - 2> envelopeXValues {};
     std::array<std::atomic<float>*, numEnvelopePoints> envelopeYValues {};
+    std::array<std::atomic<float>*, numCurveControlPoints> pitchDownCurveValues {};
+    std::array<std::atomic<float>*, numCurveControlPoints> pitchUpCurveValues {};
+    std::array<std::atomic<float>*, numCurveControlPoints> filterDownCurveValues {};
+    std::array<std::atomic<float>*, numCurveControlPoints> filterUpCurveValues {};
+    std::array<std::atomic<float>*, numCurveControlPoints> volumeDownCurveValues {};
+    std::array<std::atomic<float>*, numCurveControlPoints> volumeUpCurveValues {};
+    std::array<std::atomic<float>*, numSequencerSteps> sequencerStepValues {};
+
+    double freeSequencerSamplePosition = 0.0;
+    bool previousHostPlaying = false;
 
     std::atomic<float> visualPosition { 0.0f };
     std::atomic<MotionDirection> motionDirection { MotionDirection::inactive };
@@ -130,9 +154,10 @@ private:
     std::atomic<bool> buttonDisplayReversed { false };
     std::atomic<bool> waveformDisplayEnabled { true };
     std::array<std::atomic<float>, waveformSampleCount> waveformSamples {};
-    std::atomic<int> waveformWritePosition { 0 };
-    int waveformCaptureInterval = 1;
-    int waveformSamplesUntilCapture = 1;
+    std::atomic<bool> retriggerRequested { false };
+    std::atomic<bool> retriggerActive { false };
+    std::atomic<bool> sequencerGateActive { false };
+    std::atomic<int> currentSequencerStep { -1 };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TapeStopperAudioProcessor)
 };

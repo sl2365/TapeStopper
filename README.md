@@ -9,27 +9,31 @@
 [![Commits Since Release](https://img.shields.io/github/commits-since/sl2365/TapeStopper/latest?style=for-the-badge-square&logo=github&logoColor=white&color=green)](https://github.com/sl2365/TapeStopper/activity)
 [![Last Commit](https://img.shields.io/github/last-commit/sl2365/TapeStopper?style=for-the-badge-square&logo=github&logoColor=white&color=green)](https://github.com/sl2365/TapeStopper/activity)
 
-TapeStopper is a portable Windows x64 VST3 audio effect for tape-style slowdown and startup transitions. It combines independently timed DOWN and UP motion with tempo sync, an editable downward pitch envelope, a live waveform display, transition curves, saturation, wow, flutter, irregular flux instability, wet/dry mix, threshold muting and portable user presets.
+TapeStopper is a portable Windows x64 VST3 audio effect for tape-style slowdown and startup transitions. It combines independently timed DOWN and UP motion with tempo sync, editable Pitch, Filter and Volume curves, a separate global 11-point Envelope, a 64-step Play sequencer, a persistent transition display, saturation, wow, flutter, irregular flux instability, wet/dry mix, threshold muting and portable user presets.
 
 The interface is inspired by the TapeStop effect by TBT (Daniel Lind) and SLowER by DiVerSe. I was unable to find any sites remaining for either, only posts made on KVR audio.
 
 ![TapeStopper](screenshots/TapeStopper.jpg)
 
-## Current version
-
-Stage 8.0 is a functional development build. The plug-in uses the EP-style slowdown/startup behaviour; the earlier experimental TD mode is intentionally not included.
-
 ## Features
 
 - Buffered tape slowdown and startup processing.
 - Momentary and Toggle operation for the main Play button.
+- One-click RETRIG pulse that jumps instantly to stopped speed and then runs UP.
 - Independently enabled DOWN and UP transitions.
 - Separate DOWN and UP transition times.
 - FREE timing from 0.05 to 8.00 seconds.
 - Host-tempo SYNC timing from 4 bars to 1/64 notes.
-- Independent Linear, Gentle, Steep and S-Curve transition shapes.
-- Editable 11-point downward pitch envelope with a range of -12 to +12 semitones.
-- Optional red live-output waveform behind the envelope graph.
+- Independent five-point DOWN and UP curves for Pitch, Filter and Volume.
+- Four graph views selected by compact Pitch, Filter, Volume and Envelope tabs.
+- Blue Pitch, orange Filter, purple Volume and green Envelope controls with individual On/Off LEDs.
+- Editable global 11-point downward Envelope retained separately from the simple curves.
+- Filter Amount and Volume Amount controls.
+- 64-step Play sequencer arranged as two rows of 32 steps.
+- Separate sequencer-view button and enable LED, so opening the editor never starts sequencing.
+- Host-tempo Sync clock or tempo-independent Free clock.
+- Adjustable sequencer Rate, Length and Offset with a one-click pattern Reset.
+- Optional red transition trace behind the envelope graph. It plots effective tape speed over the complete DOWN or UP movement and remains visible afterward.
 - Adjustable Mute At transition threshold.
 - Tape-style Drive, Wow and Flutter controls.
 - Strong FLUX control for irregular pitch warble and playback errors during DOWN and UP. It fluctuates around the envelope-shaped pitch when the envelope is enabled, or around the normal tape curve when it is bypassed.
@@ -51,6 +55,8 @@ For a detailed description of every control, see [Instructions.ini](Instructions
 4. Set the UP time with the red marker using the right mouse button.
 5. Press the large blue button to slow and stop the audio. Release it, or press it again in Toggle mode, to return to full speed.
 
+Alternatively, click `RETRIG` to pulse instantly to stopped speed and recover using the current UP settings, without holding or toggling the main Play button.
+
 The green DOWN marker and red UP marker can be adjusted only on the timing track. The readout underneath the track is informational and cannot move the markers.
 
 ## Timing modes
@@ -59,21 +65,43 @@ In FREE mode, the two timing markers select continuous transition times between 
 
 In SYNC mode, the markers snap independently to:
 
-`4 BAR`, `2 BAR`, `1 BAR`, `1/2`, `1/3`, `1/4`, `1/6`, `1/8`, `1/16`, `1/24`, `1/32`, `1/48`, `1/64`
+`4 BAR`, `2 BAR`, `1 BAR`, `1/2`, `1/2T`, `1/4`, `1/4T`, `1/8`, `1/16`, `1/16T`, `1/32`, `1/32T`, `1/64`
 
 SYNC timing follows tempo information supplied by the host. FREE and SYNC values are retained separately when switching modes.
 
-## Envelope
+## Curves and Envelope
 
-The 11-point envelope adds pitch movement to the DOWN transition only. Time runs from left to right and the centre line represents zero additional pitch. Moving a point upward adds pitch; moving it downward subtracts pitch.
+The central graph always retains the red transition trace and can display one editable view at a time. Click the LED beside a tab to enable or bypass that function; click the tab name to select its graph without changing whether it is enabled.
 
-- The first and last points move vertically only.
-- The middle nine points move horizontally and vertically but cannot cross each other.
-- Double-clicking a point resets that point to zero semitones without changing its time position.
-- `ENV RESET` resets the pitch of all eleven points to zero while preserving their time positions.
-- `ENVELOPE: OFF` leaves the edited curve visible but prevents it from affecting the sound.
+The red trace always represents the resulting tape speed/pitch. It does not change into a Filter cutoff or Volume-level trace when those views are selected; their coloured curves show those control paths directly.
 
-The UP transition has its own curve control but does not use the pitch envelope.
+Pitch, Filter and Volume each have separate DOWN and UP curves. Their five control points stay equally spaced horizontally at 1/6 intervals (approximately 16.7%, 33.3%, 50%, 66.7% and 83.3%) but move freely up and down. Smooth interpolation allows gentle, steep, S-shaped and non-standard movement with finer shaping than the earlier three-point curves.
+
+The paired curves remain visually distinct: Pitch uses cyan DOWN and blue UP, Filter uses orange DOWN and brown UP, and Volume uses violet DOWN and indigo UP.
+
+- Left-drag square points to edit DOWN.
+- Right-drag circular points to edit UP.
+- Double-click the graph with the left or right mouse button to reset that direction to Linear.
+- `CURVE RESET` resets both directions in the selected Pitch, Filter or Volume view.
+- Pitch Off bypasses the tape-speed change while Filter and Volume curves can continue running.
+- Filter Amount controls how far the low-pass filter closes, with the selected curve directly shaping its logarithmic cutoff sweep.
+- Volume Amount controls the maximum level reduction.
+
+The green Envelope view is the existing global 11-point downward pitch/scratch modulation. Its first and last points move vertically; the middle nine also move horizontally without crossing. Double-clicking one point returns it to zero semitones. `ENV RESET` centres all eleven points while preserving their time positions.
+
+## Step sequencer
+
+The `SEQ` button at the bottom-left switches the bottom panel between the seven tape controls and the sequencer. The small blue LED beside `SEQ` independently enables or disables sequencer control; opening or closing the view does not alter that enabled state.
+
+The 64 steps are arranged as two rows of 32. Click a square to toggle it, or click and drag across several squares to paint the same On or Off state. Enabled steps hold the main Play button for the complete step; adjacent enabled steps therefore form a longer continuous trigger.
+
+- `SYNC` follows host tempo and offers `1/2`, `1/4`, `1/8`, `1/8T`, `1/16`, `1/16T`, `1/32`, `1/32T`, `1/64`, `1/64T` and `1/128` step rates.
+- `FREE` ignores tempo and offers step durations from 25 to 2000 ms.
+- `LEN` sets the repeating pattern length from 1 to 64 steps.
+- `OFF` offsets the pattern start by 0 to 63 steps.
+- `RESET` clears all 64 steps.
+
+Left-click a sequencer control to move forward through its values and right-click to move backward. The mouse wheel also adjusts `SYNC/FREE`, `RATE`, `LEN` and `OFF`. Rate, Length and Offset stop at their smallest and largest values instead of wrapping around. The sequencer runs only while the host transport is playing; when its LED is Off, the main Play button operates normally.
 
 ## Presets and portable data
 
@@ -83,7 +111,7 @@ User presets are saved as INI files in:
 Data\Presets
 ```
 
-The folder is created beside the loaded VST3. Presets store the sound controls, timing choices, direction enables, Play mode and all envelope points. They do not store the temporary pressed state of the large Play button or the global Setup options.
+The folder is created beside the loaded VST3. Presets store the sound controls, all six simple curves, their enables and amounts, timing choices, direction enables, Play mode, every global Envelope point and the complete sequencer pattern and settings. They do not store the temporary pressed state of the large Play button, the currently displayed graph tab, the open/closed sequencer view or the global Setup options.
 
 Portable editor and Setup options are saved in:
 
