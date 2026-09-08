@@ -11,6 +11,7 @@
 namespace
 {
 constexpr auto engageParameterId = "engage";
+constexpr auto retriggerParameterId = "retrigger";
 constexpr auto triggerModeParameterId = "triggerMode";
 constexpr auto downEnabledParameterId = "downEnabled";
 constexpr auto upEnabledParameterId = "upEnabled";
@@ -2380,7 +2381,8 @@ private:
     static constexpr float designHeight = 58.0f;
 };
 
-class SetupPanelComponent final : public juce::Component
+class SetupPanelComponent final : public juce::Component,
+                                  private juce::Timer
 {
 public:
     SetupPanelComponent (TapeStopperAudioProcessor& owner,
@@ -2445,10 +2447,12 @@ public:
         };
 
         updateButtonText();
+        startTimerHz (20);
     }
 
     ~SetupPanelComponent() override
     {
+        stopTimer();
         fullSpeedMuteButton.setLookAndFeel (nullptr);
         buttonDisplayButton.setLookAndFeel (nullptr);
         waveformDisplayButton.setLookAndFeel (nullptr);
@@ -2490,6 +2494,16 @@ public:
     }
 
 private:
+    void timerCallback() override
+    {
+        const auto enabled = processor.isFullSpeedMuteEnabled();
+        if (fullSpeedMuteButton.getToggleState() != enabled)
+        {
+            fullSpeedMuteButton.setToggleState (enabled, juce::dontSendNotification);
+            updateButtonText();
+        }
+    }
+
     void updateButtonText()
     {
         fullSpeedMuteButton.setButtonText
@@ -2598,18 +2612,42 @@ TapeStopperAudioProcessorEditor::TapeStopperAudioProcessorEditor (TapeStopperAud
 
     retriggerButton.setTooltip
         ("Jump instantly to stopped speed, then run the current UP transition");
-    retriggerButton.onClick = [this]
+    retriggerButton.onStateChange = [this]
     {
-        if (auto* engage = processor.getValueTreeState().getParameter
-                           (engageParameterId);
-            engage != nullptr && engage->getValue() >= 0.5f)
-        {
-            engage->beginChangeGesture();
-            engage->setValueNotifyingHost (0.0f);
-            engage->endChangeGesture();
-        }
+        const auto pressed = retriggerButton.isDown();
+        auto* retrigger = processor.getValueTreeState().getParameter
+                          (retriggerParameterId);
 
-        processor.requestRetrigger();
+        if (pressed && ! retriggerGestureActive)
+        {
+            if (auto* engage = processor.getValueTreeState().getParameter
+                               (engageParameterId);
+                engage != nullptr && engage->getValue() >= 0.5f)
+            {
+                engage->beginChangeGesture();
+                engage->setValueNotifyingHost (0.0f);
+                engage->endChangeGesture();
+            }
+
+            if (retrigger != nullptr)
+            {
+                retrigger->beginChangeGesture();
+                retrigger->setValueNotifyingHost (1.0f);
+            }
+
+            retriggerGestureActive = true;
+            processor.requestRetrigger();
+        }
+        else if (! pressed && retriggerGestureActive)
+        {
+            if (retrigger != nullptr)
+            {
+                retrigger->setValueNotifyingHost (0.0f);
+                retrigger->endChangeGesture();
+            }
+
+            retriggerGestureActive = false;
+        }
         updateRetriggerButtonColour();
     };
     addAndMakeVisible (retriggerButton);
@@ -2743,6 +2781,17 @@ TapeStopperAudioProcessorEditor::TapeStopperAudioProcessorEditor (TapeStopperAud
 
 TapeStopperAudioProcessorEditor::~TapeStopperAudioProcessorEditor()
 {
+    if (retriggerGestureActive)
+    {
+        if (auto* retrigger = processor.getValueTreeState().getParameter
+                              (retriggerParameterId))
+        {
+            retrigger->setValueNotifyingHost (0.0f);
+            retrigger->endChangeGesture();
+        }
+        retriggerGestureActive = false;
+    }
+
     savePortableSettings();
     stopTimer();
     setupButton.setLookAndFeel (nullptr);

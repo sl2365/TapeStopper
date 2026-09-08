@@ -1,14 +1,16 @@
-# TapeStopper - Stage 11.3
+# TapeStopper - Stage 11.4
 
 This is the first functional Windows x64 VST3 stage.
 
-## Stage 11.3 behaviour
+## Stage 11.4 behaviour
 
 - Builds a native Windows x64 VST3 audio effect with C++17 and JUCE 8.0.15.
 - Passes audio through unchanged at full speed when the new tape-character controls are at their neutral defaults.
 - Implements the first EP-mode buffered tape slowdown and startup engine.
 - Implements Momentary/M and Toggle/T operation for the main button.
 - Adds a separate RETRIG button that jumps instantly to stopped speed and then runs the current UP transition.
+- Exposes RETRIG as an automatable VST3 trigger parameter; an Off-to-On edge fires once and returning it to Off rearms it.
+- Prevents an already-held manual or sequencer gate from cancelling an automated RETRIG recovery before that gate is released.
 - Makes RETRIG independent of the Play M/T mode and every DOWN setting, while using the current UP enable, time and curve.
 - Keeps Mute At and the tape-character processing active during the UP recovery, and highlights RETRIG blue while that recovery is active.
 - Releases an engaged main Play control when RETRIG is clicked, while a later normal Play action cancels the automatic cycle cleanly.
@@ -26,6 +28,7 @@ This is the first functional Windows x64 VST3 stage.
 - Makes both Setup Display buttons the same width as the Setup Audio button.
 - Draws Mute At as a custom cyan-to-deep-blue knob matching the main Play button.
 - Adds Full Speed Mute for send-effect use, with a short smoothed transition into and out of silence.
+- Exposes Full Speed Mute as an automatable VST3 parameter while retaining its portable default in `Data\Settings.ini`.
 - Adds Normal/Reversed Play-button display without changing the trigger behaviour.
 - Saves GUI scale, Full Speed Mute, button display mode and waveform display mode in the portable `Data\Settings.ini` file.
 - Makes the PLAY triangle slightly narrower and rounds its three corners.
@@ -102,7 +105,7 @@ This is the first functional Windows x64 VST3 stage.
 - Centres the SEQ button and LED vertically in the bottom panel and increases the horizontal gap between them.
 - Narrows the four graph-tab buttons while preserving each LED-to-button gap and adding clearer spacing between neighbouring pairs.
 - Makes all five sequencer controls the same width and doubles the space between them for a more consistent control row.
-- Saves and restores the Stage 11.3 parameters, curves, Envelope points and sequencer pattern in DAW project state. RETRIG remains a transient action rather than a preset value.
+- Saves and restores the Stage 11.4 parameters, curves, Envelope points and sequencer pattern in DAW project state. RETRIG remains a transient action rather than a preset value.
 - Opens at 800 x 300 pixels and resizes from 600 x 225 through 1600 x 600 while preserving the aspect ratio.
 - Creates `Data\Settings.ini` beside the portable VST3 and restores the last GUI scale when the editor is reopened.
 - Produces the portable single-file output `dist\TapeStopper.vst3`.
@@ -113,7 +116,7 @@ TD mode is intentionally deferred while the envelope is evaluated. Setup continu
 
 ## Provisional identity warning
 
-The Stage 11.3 bundle ID and four-character VST identity codes are development placeholders. They must be replaced with approved permanent identifiers before any public build. Changing them later will make hosts see the permanent build as a different plug-in, so Stage 11.3 must not be treated as a compatibility release.
+The Stage 11.4 bundle ID and four-character VST identity codes are development placeholders. They must be replaced with approved permanent identifiers before any public build. Changing them later will make hosts see the permanent build as a different plug-in, so Stage 11.4 must not be treated as a compatibility release.
 
 ## Build
 

@@ -80,6 +80,7 @@ private:
     int savedEditorWidth = 0;
     int stableResizeTicks = 0;
     bool showingSetup = false;
+    bool retriggerGestureActive = false;
     bool showingSequencer = false;
 
     static constexpr int designWidth = 800;

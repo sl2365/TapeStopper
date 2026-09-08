@@ -1,6 +1,6 @@
 # TapeStopper
 
-[![Release](https://img.shields.io/github/v/release/sl2365/TapeStopper?style=for-the-badge-square&logo=github&logoColor=white&color=blue)](https://github.com/sl2365/TapeStopper/releases/latest/download/TapeStopper.rar)
+[![Release](https://img.shields.io/github/v/release/sl2365/TapeStopper?style=for-the-badge-square&logo=github&logoColor=white&color=purple)](https://github.com/sl2365/TapeStopper/releases/latest/download/TapeStopper.rar)
 [![Release Date](https://img.shields.io/github/release-date/sl2365/TapeStopper?style=for-the-badge-square&logo=github&logoColor=white&color=yellow)](https://github.com/sl2365/TapeStopper/releases)
 
 [![Latest Asset Downloads](https://img.shields.io/github/downloads/sl2365/TapeStopper/latest/TapeStopper.rar?style=for-the-badge-square&logo=github&logoColor=white&label=downloads-latest&displayAssetName=false&color=blue)](https://github.com/sl2365/TapeStopper/releases/latest)
@@ -20,6 +20,7 @@ The interface is inspired by the TapeStop effect by TBT (Daniel Lind) and SLowER
 - Buffered tape slowdown and startup processing.
 - Momentary and Toggle operation for the main Play button.
 - One-click RETRIG pulse that jumps instantly to stopped speed and then runs UP.
+- DAW-automatable RETRIG pulse and Full Speed Mute controls.
 - Independently enabled DOWN and UP transitions.
 - Separate DOWN and UP transition times.
 - FREE timing from 0.05 to 8.00 seconds.
@@ -56,6 +57,8 @@ For a detailed description of every control, see [Instructions.ini](Instructions
 5. Press the large blue button to slow and stop the audio. Release it, or press it again in Toggle mode, to return to full speed.
 
 Alternatively, click `RETRIG` to pulse instantly to stopped speed and recover using the current UP settings, without holding or toggling the main Play button.
+
+For DAW automation, change the `Retrigger` parameter from Off to On to fire it, then return it to Off before the next trigger. `Full Speed Mute` is also exposed as an automatable On/Off parameter while retaining its portable default in `Data\Settings.ini`.
 
 The green DOWN marker and red UP marker can be adjusted only on the timing track. The readout underneath the track is informational and cannot move the markers.
 

@@ -132,7 +132,11 @@ private:
     bool previousEngage = false;
     float currentMuteGain = 1.0f;
     float muteSmoothingAmount = 1.0f;
+    bool previousRetriggerParameterHigh = false;
+    bool suppressEngageUntilReleased = false;
 
+    std::atomic<float>* retriggerParameterValue = nullptr;
+    std::atomic<float>* fullSpeedMuteParameterValue = nullptr;
     std::atomic<float>* envelopeEnabledValue = nullptr;
     std::array<std::atomic<float>*, numEnvelopePoints - 2> envelopeXValues {};
     std::array<std::atomic<float>*, numEnvelopePoints> envelopeYValues {};
@@ -150,7 +154,6 @@ private:
     std::atomic<float> visualPosition { 0.0f };
     std::atomic<MotionDirection> motionDirection { MotionDirection::inactive };
     std::atomic<float> currentBpm { 120.0f };
-    std::atomic<bool> fullSpeedMuteEnabled { false };
     std::atomic<bool> buttonDisplayReversed { false };
     std::atomic<bool> waveformDisplayEnabled { true };
     std::array<std::atomic<float>, waveformSampleCount> waveformSamples {};

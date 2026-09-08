@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.25)
 
-project(TapeStopper VERSION 0.11.3 LANGUAGES C CXX)
+project(TapeStopper VERSION 0.11.4 LANGUAGES C CXX)
 
 set(JUCE_DIR "${CMAKE_CURRENT_LIST_DIR}/../../_Tools/JUCE/_8.0.15")
 
@@ -17,7 +17,7 @@ juce_add_plugin(TapeStopper
     PLUGIN_CODE TstP
     FORMATS VST3
     PRODUCT_NAME "TapeStopper"
-    DESCRIPTION "TapeStopper Stage 11.3 sequencer control alignment"
+    DESCRIPTION "TapeStopper Stage 11.4 automation extensions"
     IS_SYNTH FALSE
     NEEDS_MIDI_INPUT FALSE
     NEEDS_MIDI_OUTPUT FALSE

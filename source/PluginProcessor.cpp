@@ -7,12 +7,14 @@
 namespace
 {
 constexpr auto engageParameterId = "engage";
+constexpr auto retriggerParameterId = "retrigger";
 constexpr auto triggerModeParameterId = "triggerMode";
 constexpr auto downEnabledParameterId = "downEnabled";
 constexpr auto upEnabledParameterId = "upEnabled";
 constexpr auto downSpeedParameterId = "downSpeed";
 constexpr auto upSpeedParameterId = "upSpeed";
 constexpr auto muteAtParameterId = "muteAt";
+constexpr auto fullSpeedMuteParameterId = "fullSpeedMute";
 constexpr auto timingModeParameterId = "timingMode";
 constexpr auto downSyncDivisionParameterId = "downSyncDivision";
 constexpr auto upSyncDivisionParameterId = "upSyncDivision";
@@ -109,8 +111,12 @@ TapeStopperAudioProcessor::TapeStopperAudioProcessor()
       parameters (*this, nullptr, "PARAMETERS", createParameterLayout())
 {
     const auto portableSettings = TapeStopperPortableSettings::load();
-    fullSpeedMuteEnabled.store (portableSettings.fullSpeedMute,
-                                std::memory_order_relaxed);
+    if (auto* parameter = parameters.getParameter (fullSpeedMuteParameterId))
+        parameter->setValue (portableSettings.fullSpeedMute ? 1.0f : 0.0f);
+
+    retriggerParameterValue = parameters.getRawParameterValue (retriggerParameterId);
+    fullSpeedMuteParameterValue
+        = parameters.getRawParameterValue (fullSpeedMuteParameterId);
     buttonDisplayReversed.store (portableSettings.reversedButtonDisplay,
                                  std::memory_order_relaxed);
     waveformDisplayEnabled.store (portableSettings.waveformDisplay,
@@ -158,6 +164,8 @@ TapeStopperAudioProcessor::createParameterLayout()
 
     layout.add (std::make_unique<juce::AudioParameterBool>
                 (juce::ParameterID { engageParameterId, 1 }, "Start / Stop", false));
+    layout.add (std::make_unique<juce::AudioParameterBool>
+                (juce::ParameterID { retriggerParameterId, 1 }, "Retrigger", false));
     layout.add (std::make_unique<juce::AudioParameterChoice>
                 (juce::ParameterID { triggerModeParameterId, 1 }, "Button Mode",
                  juce::StringArray { "Momentary", "Toggle" }, 0));
@@ -174,6 +182,9 @@ TapeStopperAudioProcessor::createParameterLayout()
     layout.add (std::make_unique<juce::AudioParameterFloat>
                 (juce::ParameterID { muteAtParameterId, 1 }, "Mute At",
                  juce::NormalisableRange<float> { 0.0f, 100.0f, 1.0f }, 90.0f));
+    layout.add (std::make_unique<juce::AudioParameterBool>
+                (juce::ParameterID { fullSpeedMuteParameterId, 1 },
+                 "Full Speed Mute", false));
     layout.add (std::make_unique<juce::AudioParameterChoice>
                 (juce::ParameterID { timingModeParameterId, 1 }, "Timing Mode",
                  juce::StringArray { "Free", "Sync" }, 0));
@@ -348,7 +359,7 @@ void TapeStopperAudioProcessor::prepareToPlay (double sampleRate, int)
     previousEngage = false;
     previousHostPlaying = false;
     freeSequencerSamplePosition = 0.0;
-    currentMuteGain = fullSpeedMuteEnabled.load (std::memory_order_relaxed) ? 0.0f : 1.0f;
+    currentMuteGain = isFullSpeedMuteEnabled() ? 0.0f : 1.0f;
     muteSmoothingAmount = 1.0f - std::exp (-1.0f
                                            / static_cast<float> (currentSampleRate * 0.005));
     characterSmoothingAmount = 1.0f - std::exp
@@ -372,6 +383,8 @@ void TapeStopperAudioProcessor::prepareToPlay (double sampleRate, int)
     currentBpm.store (120.0f, std::memory_order_relaxed);
     retriggerRequested.store (false, std::memory_order_relaxed);
     retriggerActive.store (false, std::memory_order_relaxed);
+    previousRetriggerParameterHigh = false;
+    suppressEngageUntilReleased = false;
     sequencerGateActive.store (false, std::memory_order_relaxed);
     currentSequencerStep.store (-1, std::memory_order_relaxed);
     for (auto& sample : waveformSamples)
@@ -647,11 +660,17 @@ void TapeStopperAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
 
     const auto manualEngage = parameters.getRawParameterValue
                               (engageParameterId)->load() >= 0.5f;
+    const auto retriggerParameterHigh = retriggerParameterValue != nullptr
+                                        && retriggerParameterValue->load() >= 0.5f;
+    if (retriggerParameterHigh && ! previousRetriggerParameterHigh)
+        retriggerRequested.store (true, std::memory_order_release);
+    previousRetriggerParameterHigh = retriggerParameterHigh;
     const auto downEnabled = parameters.getRawParameterValue (downEnabledParameterId)->load() >= 0.5f;
     const auto upEnabled = parameters.getRawParameterValue (upEnabledParameterId)->load() >= 0.5f;
     const auto muteAt = juce::jlimit (0.0f, 1.0f,
                                      parameters.getRawParameterValue (muteAtParameterId)->load()
                                          / 100.0f);
+    const auto fullSpeedMute = isFullSpeedMuteEnabled();
     const auto envelopeEnabled = envelopeEnabledValue != nullptr
                                  && envelopeEnabledValue->load() >= 0.5f;
     const auto pitchCurveEnabled = parameters.getRawParameterValue
@@ -796,6 +815,8 @@ void TapeStopperAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     if (retriggerRequested.exchange (false, std::memory_order_acq_rel))
     {
         retriggerActive.store (true, std::memory_order_relaxed);
+        previousEngage = false;
+        suppressEngageUntilReleased = true;
 
         // RETRIG is a pulse rather than a DOWN transition: jump immediately
         // to stopped speed, then use only the current UP settings to recover.
@@ -848,6 +869,14 @@ void TapeStopperAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
         {
             currentSequencerStep.store (-1, std::memory_order_relaxed);
             sequencerGateActive.store (false, std::memory_order_relaxed);
+        }
+
+        if (suppressEngageUntilReleased)
+        {
+            if (effectiveEngage)
+                effectiveEngage = false;
+            else
+                suppressEngageUntilReleased = false;
         }
 
         if (effectiveEngage != previousEngage)
@@ -995,8 +1024,7 @@ void TapeStopperAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
                                  || motionState == MotionState::speeding;
         const auto muteAtThresholdReached = muteApplies
                                             && transitionPositionNow >= muteAt;
-        const auto fullSpeedShouldMute = fullSpeedMuteEnabled.load
-                                         (std::memory_order_relaxed)
+        const auto fullSpeedShouldMute = fullSpeedMute
                                          && motionState == MotionState::fullSpeed;
         const auto targetMuteGain = muteAtThresholdReached || fullSpeedShouldMute
                                         ? 0.0f : 1.0f;
@@ -1182,7 +1210,7 @@ void TapeStopperAudioProcessor::changeProgramName (int, const juce::String&)
 void TapeStopperAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
     auto state = parameters.copyState();
-    state.setProperty ("schemaVersion", 12, nullptr);
+    state.setProperty ("schemaVersion", 13, nullptr);
 
     if (const auto xml = state.createXml())
         copyXmlToBinary (*xml, destData);
@@ -1217,7 +1245,8 @@ TapeStopperAudioProcessor::getMotionDirection() const noexcept
 
 bool TapeStopperAudioProcessor::isFullSpeedMuteEnabled() const noexcept
 {
-    return fullSpeedMuteEnabled.load (std::memory_order_relaxed);
+    return fullSpeedMuteParameterValue != nullptr
+           && fullSpeedMuteParameterValue->load() >= 0.5f;
 }
 
 bool TapeStopperAudioProcessor::isButtonDisplayReversed() const noexcept
@@ -1247,7 +1276,12 @@ int TapeStopperAudioProcessor::getCurrentSequencerStep() const noexcept
 
 void TapeStopperAudioProcessor::setFullSpeedMuteEnabled (bool enabled) noexcept
 {
-    fullSpeedMuteEnabled.store (enabled, std::memory_order_relaxed);
+    if (auto* parameter = parameters.getParameter (fullSpeedMuteParameterId))
+    {
+        parameter->beginChangeGesture();
+        parameter->setValueNotifyingHost (enabled ? 1.0f : 0.0f);
+        parameter->endChangeGesture();
+    }
 }
 
 void TapeStopperAudioProcessor::setButtonDisplayReversed (bool reversed) noexcept
