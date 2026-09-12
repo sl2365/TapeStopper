@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.25)
 
-project(TapeStopper VERSION 0.11.5 LANGUAGES C CXX)
+project(TapeStopper VERSION 0.11.6 LANGUAGES C CXX)
 
 set(JUCE_DIR "${CMAKE_CURRENT_LIST_DIR}/../../_Tools/JUCE/_8.0.15")
 
@@ -17,7 +17,7 @@ juce_add_plugin(TapeStopper
     PLUGIN_CODE TpSt
     FORMATS VST3
     PRODUCT_NAME "TapeStopper"
-    DESCRIPTION "TapeStopper Stage 11.5 permanent plug-in identity"
+    DESCRIPTION "TapeStopper Stage 11.6 expanded triplet timings"
     IS_SYNTH FALSE
     NEEDS_MIDI_INPUT FALSE
     NEEDS_MIDI_OUTPUT FALSE

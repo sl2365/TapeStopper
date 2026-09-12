@@ -63,9 +63,9 @@ public:
     static float syncDivisionToSeconds (int divisionIndex, float bpm) noexcept;
     static juce::String syncDivisionName (int divisionIndex);
     static juce::String sequencerResolutionName (int resolutionIndex);
-    static constexpr int numSyncDivisions = 13;
+    static constexpr int numSyncDivisions = 14;
     static constexpr int numSequencerSteps = 64;
-    static constexpr int numSequencerResolutions = 11;
+    static constexpr int numSequencerResolutions = 13;
     static constexpr int numEnvelopePoints = 11;
     static constexpr int numCurveControlPoints = 5;
 

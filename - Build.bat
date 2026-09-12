@@ -16,7 +16,7 @@ exit /b %BUILD_EXIT%
 :BUILD_INNER
 setlocal EnableExtensions EnableDelayedExpansion
 
-set "STAGE=Stage 11.5"
+set "STAGE=Stage 11.6"
 set "PROJECT_ROOT=%~dp0"
 set "SOURCE_DIR=%PROJECT_ROOT%source"
 set "BUILD_DIR=%PROJECT_ROOT%build"
@@ -127,7 +127,7 @@ echo - PASS: Portable single-file VST3 created.
 echo - PASS: Final file validated as Windows x64 PE.
 echo - PASS: dist contains only allowed items.
 echo - OUTPUT: %FINAL_OUTPUT%
-echo - NOTE: Stage 11.5 establishes the permanent sl23 TapeStopper identity.
+echo - NOTE: Stage 11.6 adds the expanded sequencer and slider triplet timings.
 exit /b 0
 
 :CHECK_FILE

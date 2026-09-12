@@ -61,14 +61,41 @@ juce::String curvePointParameterId (const juce::String& target,
 juce::StringArray makeSyncDivisionNames()
 {
     return { "4 BAR", "2 BAR", "1 BAR", "1/2", "1/2T",
-             "1/4", "1/4T", "1/8", "1/16", "1/16T", "1/32",
-             "1/32T", "1/64" };
+             "1/4", "1/4T", "1/8", "1/8T", "1/16", "1/16T",
+             "1/32", "1/32T", "1/64" };
 }
 
 juce::StringArray makeSequencerResolutionNames()
 {
-    return { "1/2", "1/4", "1/8", "1/8T", "1/16", "1/16T",
-             "1/32", "1/32T", "1/64", "1/64T", "1/128" };
+    return { "1/2", "1/2T", "1/4", "1/4T", "1/8", "1/8T",
+             "1/16", "1/16T", "1/32", "1/32T", "1/64", "1/64T",
+             "1/128" };
+}
+
+float remapChoiceIndex (float oldValue, int insertionIndex, int addedChoices) noexcept
+{
+    const auto oldIndex = juce::roundToInt (oldValue);
+    return static_cast<float> (oldIndex >= insertionIndex
+                                   ? oldIndex + addedChoices
+                                   : oldIndex);
+}
+
+void remapChoiceProperty (juce::ValueTree& state, const juce::String& parameterId,
+                          int insertionIndex, int addedChoices)
+{
+    for (int childIndex = 0; childIndex < state.getNumChildren(); ++childIndex)
+    {
+        auto child = state.getChild (childIndex);
+        if (child.getProperty ("id").toString() == parameterId)
+        {
+            const auto oldValue = static_cast<float>
+                                  (static_cast<double> (child.getProperty ("value")));
+            child.setProperty ("value",
+                               remapChoiceIndex (oldValue, insertionIndex, addedChoices),
+                               nullptr);
+            return;
+        }
+    }
 }
 
 float evaluateCurve (const std::array<float,
@@ -235,7 +262,7 @@ TapeStopperAudioProcessor::createParameterLayout()
                  "Sequencer Clock", juce::StringArray { "Sync", "Free" }, 0));
     layout.add (std::make_unique<juce::AudioParameterChoice>
                 (juce::ParameterID { sequencerResolutionParameterId, 1 },
-                 "Sequencer Resolution", makeSequencerResolutionNames(), 4));
+                 "Sequencer Resolution", makeSequencerResolutionNames(), 6));
     layout.add (std::make_unique<juce::AudioParameterFloat>
                 (juce::ParameterID { sequencerFreeRateParameterId, 1 },
                  "Sequencer Free Rate",
@@ -308,8 +335,8 @@ float TapeStopperAudioProcessor::syncDivisionToSeconds (int divisionIndex,
 {
     static constexpr float quarterNoteMultipliers[numSyncDivisions]
         { 16.0f, 8.0f, 4.0f, 2.0f, 4.0f / 3.0f,
-          1.0f, 2.0f / 3.0f, 0.5f, 0.25f, 1.0f / 6.0f, 0.125f,
-          1.0f / 12.0f, 0.0625f };
+          1.0f, 2.0f / 3.0f, 0.5f, 1.0f / 3.0f, 0.25f,
+          1.0f / 6.0f, 0.125f, 1.0f / 12.0f, 0.0625f };
 
     const auto safeIndex = juce::jlimit (0, numSyncDivisions - 1, divisionIndex);
     const auto safeBpm = juce::jlimit (20.0f, 400.0f, bpm);
@@ -739,8 +766,9 @@ void TapeStopperAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     const auto sequencerControlsPlay = sequencerEnabled && hostPlaying;
     static constexpr std::array<double, numSequencerResolutions>
         sequencerQuarterNoteLengths
-        { 2.0, 1.0, 0.5, 1.0 / 3.0, 0.25, 1.0 / 6.0,
-          0.125, 1.0 / 12.0, 0.0625, 1.0 / 24.0, 0.03125 };
+        { 2.0, 4.0 / 3.0, 1.0, 2.0 / 3.0, 0.5, 1.0 / 3.0,
+          0.25, 1.0 / 6.0, 0.125, 1.0 / 12.0, 0.0625,
+          1.0 / 24.0, 0.03125 };
 
     if (! hostPlaying)
         freeSequencerSamplePosition = 0.0;
@@ -1210,7 +1238,7 @@ void TapeStopperAudioProcessor::changeProgramName (int, const juce::String&)
 void TapeStopperAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
     auto state = parameters.copyState();
-    state.setProperty ("schemaVersion", 13, nullptr);
+    state.setProperty ("schemaVersion", 14, nullptr);
 
     if (const auto xml = state.createXml())
         copyXmlToBinary (*xml, destData);
@@ -1220,10 +1248,19 @@ void TapeStopperAudioProcessor::setStateInformation (const void* data, int sizeI
 {
     if (const auto xml = getXmlFromBinary (data, sizeInBytes))
     {
-        const auto state = juce::ValueTree::fromXml (*xml);
+        auto state = juce::ValueTree::fromXml (*xml);
 
         if (state.isValid() && state.hasType (parameters.state.getType()))
+        {
+            if (static_cast<int> (state.getProperty ("schemaVersion", 0)) == 13)
+            {
+                remapChoiceProperty (state, downSyncDivisionParameterId, 8, 1);
+                remapChoiceProperty (state, upSyncDivisionParameterId, 8, 1);
+                remapChoiceProperty (state, sequencerResolutionParameterId, 1, 2);
+            }
+
             parameters.replaceState (state);
+        }
     }
 }
 

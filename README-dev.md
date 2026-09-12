@@ -1,8 +1,8 @@
-# TapeStopper - Stage 11.5
+# TapeStopper - Stage 11.6
 
 This is the first functional Windows x64 VST3 stage.
 
-## Stage 11.5 behaviour
+## Stage 11.6 behaviour
 
 - Builds a native Windows x64 VST3 audio effect with C++17 and JUCE 8.0.15.
 - Passes audio through unchanged at full speed when the new tape-character controls are at their neutral defaults.
@@ -37,7 +37,7 @@ This is the first functional Windows x64 VST3 stage.
 - Preserves the measured 20% marker default at approximately 0.71 seconds while extending the slow end of the curve.
 - Shows a blue transition-position indicator.
 - Adds a functional FREE/SYNC button that switches between continuous and host-tempo timing.
-- Snaps the green Down and red Up markers independently to 4 BAR, 2 BAR, 1 BAR, 1/2, 1/2T, 1/4, 1/4T, 1/8, 1/16, 1/16T, 1/32, 1/32T or 1/64 in SYNC mode.
+- Snaps the green Down and red Up markers independently to 4 BAR, 2 BAR, 1 BAR, 1/2, 1/2T, 1/4, 1/4T, 1/8, 1/8T, 1/16, 1/16T, 1/32, 1/32T or 1/64 in SYNC mode.
 - Shows seconds below the timing bar in FREE mode and the selected divisions in SYNC mode.
 - Restricts timing-marker clicks and drags to the visible slider track; the DOWN/UP time readout below it is non-interactive.
 - Retains the continuous Free values separately when switching between timing modes.
@@ -57,7 +57,7 @@ This is the first functional Windows x64 VST3 stage.
 - Replaces the seven-knob display with a 64-step editor while SEQ view is open, without changing whether the sequencer is enabled.
 - Displays the 64 binary Play states as two rows of 32 and supports click-drag pattern painting.
 - Drives the main Play state from the active step while the host transport is running and returns to manual Play control when sequencing is disabled.
-- Provides sequencer Sync rates of 1/2, 1/4, 1/8, 1/8T, 1/16, 1/16T, 1/32, 1/32T, 1/64, 1/64T and 1/128, plus Free step durations from 25-2000 ms.
+- Provides sequencer Sync rates of 1/2, 1/2T, 1/4, 1/4T, 1/8, 1/8T, 1/16, 1/16T, 1/32, 1/32T, 1/64, 1/64T and 1/128, plus Free step durations from 25-2000 ms.
 - Renames the main timing-bar triplet values to matching T notation without changing their actual durations.
 - Clamps sequencer Rate, Length and Offset adjustment at their end values instead of wrapping.
 - Enlarges only the SEQ view-button text and darkens the coloured graph-tab text for clearer reading.
@@ -105,7 +105,7 @@ This is the first functional Windows x64 VST3 stage.
 - Centres the SEQ button and LED vertically in the bottom panel and increases the horizontal gap between them.
 - Narrows the four graph-tab buttons while preserving each LED-to-button gap and adding clearer spacing between neighbouring pairs.
 - Makes all five sequencer controls the same width and doubles the space between them for a more consistent control row.
-- Saves and restores the Stage 11.5 parameters, curves, Envelope points and sequencer pattern in DAW project state. RETRIG remains a transient action rather than a preset value.
+- Saves and restores the Stage 11.6 parameters, curves, Envelope points and sequencer pattern in DAW project state. RETRIG remains a transient action rather than a preset value.
 - Opens at 800 x 300 pixels and resizes from 600 x 225 through 1600 x 600 while preserving the aspect ratio.
 - Creates `Data\Settings.ini` beside the portable VST3 and restores the last GUI scale when the editor is reopened.
 - Produces the portable single-file output `dist\TapeStopper.vst3`.

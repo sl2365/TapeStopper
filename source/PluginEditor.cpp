@@ -579,6 +579,8 @@ private:
                             const juce::String& sourceName)
     {
         auto& parameterState = processor.getValueTreeState();
+        const auto presetFormatVersion = values.getValue ("FormatVersion", "0")
+                                               .getIntValue();
         std::vector<std::pair<juce::RangedAudioParameter*, float>> pendingValues;
         pendingValues.reserve (presetParameterIds.size());
 
@@ -603,11 +605,22 @@ private:
                 return false;
             }
 
-            const auto actualValue = values[parameterId].getDoubleValue();
+            auto actualValue = values[parameterId].getDoubleValue();
             if (! std::isfinite (actualValue))
             {
                 showPresetError ("The preset contains an invalid value:\n" + sourceName);
                 return false;
+            }
+
+            if (presetFormatVersion >= 4 && presetFormatVersion <= 5)
+            {
+                if ((parameterId == downSyncDivisionParameterId
+                     || parameterId == upSyncDivisionParameterId)
+                    && actualValue >= 8.0)
+                    actualValue += 1.0;
+                else if (parameterId == sequencerResolutionParameterId
+                         && actualValue >= 1.0)
+                    actualValue += 2.0;
             }
 
             pendingValues.emplace_back
@@ -659,7 +672,7 @@ private:
         contents << "; TapeStopper user preset\r\n"
                  << "[TapeStopperPreset]\r\n"
                  << "Name=" << presetName << "\r\n"
-                 << "FormatVersion=5\r\n";
+                 << "FormatVersion=6\r\n";
 
         auto& parameterState = processor.getValueTreeState();
         for (const auto& parameterId : presetParameterIds)
@@ -2115,7 +2128,7 @@ public:
         const auto freeClock = getIntegerValue (clockModeValue, 0) != 0;
         const auto resolution = juce::jlimit
             (0, TapeStopperAudioProcessor::numSequencerResolutions - 1,
-             getIntegerValue (resolutionValue, 4));
+             getIntegerValue (resolutionValue, 6));
         const auto freeRate = juce::jlimit (25, 2000, getIntegerValue (freeRateValue, 125));
         const auto length = juce::jlimit
             (1, TapeStopperAudioProcessor::numSequencerSteps,
@@ -2294,7 +2307,7 @@ private:
         {
             if (getIntegerValue (clockModeValue, 0) == 0)
             {
-                const auto current = getIntegerValue (resolutionValue, 4);
+                const auto current = getIntegerValue (resolutionValue, 6);
                 const auto count = TapeStopperAudioProcessor::numSequencerResolutions;
                 setActualValue (resolutionParameter,
                                 static_cast<float> (juce::jlimit

@@ -68,7 +68,7 @@ In FREE mode, the two timing markers select continuous transition times between 
 
 In SYNC mode, the markers snap independently to:
 
-`4 BAR`, `2 BAR`, `1 BAR`, `1/2`, `1/2T`, `1/4`, `1/4T`, `1/8`, `1/16`, `1/16T`, `1/32`, `1/32T`, `1/64`
+`4 BAR`, `2 BAR`, `1 BAR`, `1/2`, `1/2T`, `1/4`, `1/4T`, `1/8`, `1/8T`, `1/16`, `1/16T`, `1/32`, `1/32T`, `1/64`
 
 SYNC timing follows tempo information supplied by the host. FREE and SYNC values are retained separately when switching modes.
 
@@ -98,7 +98,7 @@ The `SEQ` button at the bottom-left switches the bottom panel between the seven 
 
 The 64 steps are arranged as two rows of 32. Click a square to toggle it, or click and drag across several squares to paint the same On or Off state. Enabled steps hold the main Play button for the complete step; adjacent enabled steps therefore form a longer continuous trigger.
 
-- `SYNC` follows host tempo and offers `1/2`, `1/4`, `1/8`, `1/8T`, `1/16`, `1/16T`, `1/32`, `1/32T`, `1/64`, `1/64T` and `1/128` step rates.
+- `SYNC` follows host tempo and offers `1/2`, `1/2T`, `1/4`, `1/4T`, `1/8`, `1/8T`, `1/16`, `1/16T`, `1/32`, `1/32T`, `1/64`, `1/64T` and `1/128` step rates.
 - `FREE` ignores tempo and offers step durations from 25 to 2000 ms.
 - `LEN` sets the repeating pattern length from 1 to 64 steps.
 - `OFF` offsets the pattern start by 0 to 63 steps.
