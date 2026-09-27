@@ -3005,6 +3005,12 @@ void TapeStopperAudioProcessorEditor::paint (juce::Graphics& g)
     g.setFont (juce::FontOptions (15.0f, juce::Font::bold));
     g.drawText ("TAPESTOPPER", 14, 0, 180, 23, juce::Justification::centredLeft);
 
+    juce::ColourGradient versionBlue (juce::Colour (0xff5bd4ff), 0.0f, 0.0f,
+                                      juce::Colour (0xff075ed6), 0.0f, 23.0f, false);
+    g.setGradientFill (versionBlue);
+    g.setFont (juce::FontOptions (12.0f, juce::Font::bold));
+    g.drawText ("v1.40", 126, 0, 52, 23, juce::Justification::centredLeft);
+
     drawPanel (g, { 10.0f, 32.0f, 242.0f, 178.0f });
     drawPanel (g, { 262.0f, 32.0f, 388.0f, 178.0f });
     drawPanel (g, { 660.0f, 32.0f, 130.0f, 178.0f });
