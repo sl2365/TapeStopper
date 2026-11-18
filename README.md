@@ -1,13 +1,13 @@
 # TapeStopper
 
+<div align="center">
+
 [![Release](https://img.shields.io/github/v/release/sl2365/TapeStopper?style=for-the-badge-square&logo=github&logoColor=white&color=purple)](https://github.com/sl2365/TapeStopper/releases/latest/download/TapeStopper.rar)
 [![Release Date](https://img.shields.io/github/release-date/sl2365/TapeStopper?style=for-the-badge-square&logo=github&logoColor=white&color=yellow)](https://github.com/sl2365/TapeStopper/releases)
-
 [![Latest Asset Downloads](https://img.shields.io/github/downloads/sl2365/TapeStopper/latest/TapeStopper.rar?style=for-the-badge-square&logo=github&logoColor=white&label=downloads-latest&displayAssetName=false&color=blue)](https://github.com/sl2365/TapeStopper/releases/latest)
 [![Total Downloads](https://img.shields.io/github/downloads/sl2365/TapeStopper/total?style=for-the-badge-square&logo=github&logoColor=white&label=downloads-total&color=blue)](https://github.com/sl2365/TapeStopper/releases)
 
-[![Commits Since Release](https://img.shields.io/github/commits-since/sl2365/TapeStopper/latest?style=for-the-badge-square&logo=github&logoColor=white&color=green)](https://github.com/sl2365/TapeStopper/activity)
-[![Last Commit](https://img.shields.io/github/last-commit/sl2365/TapeStopper?style=for-the-badge-square&logo=github&logoColor=white&color=green)](https://github.com/sl2365/TapeStopper/activity)
+</div>
 
 TapeStopper is a portable Windows x64 VST3 audio effect for tape-style slowdown and startup transitions. It combines independently timed DOWN and UP motion with tempo sync, editable Pitch, Filter and Volume curves, a separate global 11-point Envelope, a 64-step Play sequencer, a persistent transition display, saturation, wow, flutter, irregular flux instability, wet/dry mix, threshold muting and portable user presets.
 
