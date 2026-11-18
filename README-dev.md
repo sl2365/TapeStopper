@@ -4,7 +4,7 @@ This is the first functional Windows x64 VST3 stage.
 
 ## Stage 11.6 behaviour
 
-- Builds a native Windows x64 VST3 audio effect with C++17 and JUCE 8.0.15.
+- Builds a native Windows x64 VST3 audio effect with C++17 and JUCE 9.0.4.
 - Passes audio through unchanged at full speed when the new tape-character controls are at their neutral defaults.
 - Implements the first EP-mode buffered tape slowdown and startup engine.
 - Implements Momentary/M and Toggle/T operation for the main button.
@@ -28,9 +28,9 @@ This is the first functional Windows x64 VST3 stage.
 - Makes both Setup Display buttons the same width as the Setup Audio button.
 - Draws Mute At as a custom cyan-to-deep-blue knob matching the main Play button.
 - Adds Full Speed Mute for send-effect use, with a short smoothed transition into and out of silence.
-- Exposes Full Speed Mute as an automatable VST3 parameter while retaining its portable default in `Data\Settings.ini`.
+- Exposes Full Speed Mute as an automatable VST3 parameter while retaining its portable default in `TapeStopper_Data\Settings.ini`.
 - Adds Normal/Reversed Play-button display without changing the trigger behaviour.
-- Saves GUI scale, Full Speed Mute, button display mode and waveform display mode in the portable `Data\Settings.ini` file.
+- Saves GUI scale, Full Speed Mute, button display mode and waveform display mode in the portable `TapeStopper_Data\Settings.ini` file.
 - Makes the PLAY triangle slightly narrower and rounds its three corners.
 - Implements independently adjustable green Down and red Up speed markers.
 - Extends the FREE timing range from 0.05 to 8.00 seconds.
@@ -98,7 +98,7 @@ This is the first functional Windows x64 VST3 stage.
 - Provides SAVE, SAVE AS and a LOAD submenu containing INIT and every saved user preset.
 - Opens the Save As and Rename preset dialogues centrally over the plug-in interface.
 - Allows NAME to rename a saved preset; when INIT is selected it creates a newly named preset instead.
-- Saves portable preset files to `Data\Presets` beside the loaded VST3 and scans that folder whenever its list is opened or stepped.
+- Saves portable preset files to `TapeStopper_Data\Presets` beside the loaded VST3 and scans that folder whenever its list is opened or stepped.
 - Stores every sound/control parameter and all envelope points in a preset, while excluding the transient main Play state and the global Setup options.
 - Stores the Filter/Volume Amount controls, all six five-point curves and all four enable states in presets.
 - Retains the current preset name in DAW project state.
@@ -107,10 +107,11 @@ This is the first functional Windows x64 VST3 stage.
 - Makes all five sequencer controls the same width and doubles the space between them for a more consistent control row.
 - Saves and restores the Stage 11.6 parameters, curves, Envelope points and sequencer pattern in DAW project state. RETRIG remains a transient action rather than a preset value.
 - Opens at 800 x 300 pixels and resizes from 600 x 225 through 1600 x 600 while preserving the aspect ratio.
-- Creates `Data\Settings.ini` beside the portable VST3 and restores the last GUI scale when the editor is reopened.
+- Automatically renames a legacy `Data` folder beside the VST3 to `TapeStopper_Data`.
+- Creates `TapeStopper_Data\Settings.ini` beside the portable VST3 and restores the last GUI scale when the editor is reopened.
 - Produces the portable single-file output `dist\TapeStopper.vst3`.
 - Does not install the plug-in elsewhere.
-- Preserves an existing `dist\Data` folder.
+- Preserves `dist\TapeStopper_Data`; a legacy `dist\Data` folder is retained until the plug-in migrates it on first run.
 
 TD mode is intentionally deferred while the envelope is evaluated. Setup continues to use the requested toggleable middle-panel view rather than a separate window.
 
@@ -126,7 +127,7 @@ Double-click `- Build.bat` in the TapeStopper Project Root. The batch file uses 
 
 ```text
 ..\_Tools\cmake\_4.4.2\bin\cmake.exe
-..\_Tools\JUCE\_8.0.15\CMakeLists.txt
+..\_Tools\JUCE\_9.0.4\CMakeLists.txt
 ```
 
 The required generator is Visual Studio 18 2026, x64.

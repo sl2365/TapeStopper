@@ -6,6 +6,20 @@
  #include <windows.h>
 #endif
 
+namespace
+{
+juce::File getTapeStopperDataFolder (const juce::File& parentFolder)
+{
+    const auto legacyDataFolder = parentFolder.getChildFile ("Data");
+    const auto dataFolder = parentFolder.getChildFile ("TapeStopper_Data");
+
+    if (legacyDataFolder.isDirectory())
+        legacyDataFolder.moveFileTo (dataFolder);
+
+    return dataFolder;
+}
+}
+
 juce::File TapeStopperPortableSettings::getDataFolder()
 {
 #if JUCE_WINDOWS
@@ -29,7 +43,7 @@ juce::File TapeStopperPortableSettings::getDataFolder()
     for (int depth = 0; depth < 6; ++depth)
     {
         if (folder.hasFileExtension (".vst3"))
-            return folder.getParentDirectory().getChildFile ("Data");
+            return getTapeStopperDataFolder (folder.getParentDirectory());
 
         const auto parent = folder.getParentDirectory();
         if (parent == folder)
@@ -37,7 +51,7 @@ juce::File TapeStopperPortableSettings::getDataFolder()
         folder = parent;
     }
 
-    return moduleFile.getParentDirectory().getChildFile ("Data");
+    return getTapeStopperDataFolder (moduleFile.getParentDirectory());
 #else
     return {};
 #endif

@@ -664,7 +664,7 @@ private:
         if (presetDirectory == juce::File()
             || presetDirectory.createDirectory().failed())
         {
-            showPresetError ("The Data\\Presets folder could not be created.");
+            showPresetError ("The TapeStopper_Data\\Presets folder could not be created.");
             return false;
         }
 
@@ -3009,7 +3009,7 @@ void TapeStopperAudioProcessorEditor::paint (juce::Graphics& g)
                                       juce::Colour (0xff075ed6), 0.0f, 23.0f, false);
     g.setGradientFill (versionBlue);
     g.setFont (juce::FontOptions (12.0f, juce::Font::bold));
-    g.drawText ("v1.40", 126, 0, 52, 23, juce::Justification::centredLeft);
+    g.drawText ("v1.42", 126, 0, 52, 23, juce::Justification::centredLeft);
 
     drawPanel (g, { 10.0f, 32.0f, 242.0f, 178.0f });
     drawPanel (g, { 262.0f, 32.0f, 388.0f, 178.0f });

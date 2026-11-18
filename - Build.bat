@@ -16,14 +16,14 @@ exit /b %BUILD_EXIT%
 :BUILD_INNER
 setlocal EnableExtensions EnableDelayedExpansion
 
-set "STAGE=Stage 11.6"
+set "STAGE=v1.42"
 set "PROJECT_ROOT=%~dp0"
 set "SOURCE_DIR=%PROJECT_ROOT%source"
 set "BUILD_DIR=%PROJECT_ROOT%build"
 set "DIST_DIR=%PROJECT_ROOT%dist"
 set "FINAL_OUTPUT=%DIST_DIR%\TapeStopper.vst3"
 set "CMAKE_EXE=%PROJECT_ROOT%..\_Tools\cmake\_4.4.2\bin\cmake.exe"
-set "JUCE_CMAKE=%PROJECT_ROOT%..\_Tools\JUCE\_8.0.15\CMakeLists.txt"
+set "JUCE_CMAKE=%PROJECT_ROOT%..\_Tools\JUCE\_9.0.4\CMakeLists.txt"
 
 echo TapeStopper %STAGE%
 echo Project Root: %PROJECT_ROOT%
@@ -39,7 +39,7 @@ if errorlevel 1 (
 
 call :CHECK_FILE "%CMAKE_EXE%" "CMake 4.4.2 executable"
 if errorlevel 1 exit /b 1
-call :CHECK_FILE "%JUCE_CMAKE%" "JUCE 8.0.15 CMakeLists.txt"
+call :CHECK_FILE "%JUCE_CMAKE%" "JUCE 9.0.4 CMakeLists.txt"
 if errorlevel 1 exit /b 1
 call :CHECK_FILE "%SOURCE_DIR%\CMakeLists.txt" "project CMakeLists.txt"
 if errorlevel 1 exit /b 1
@@ -55,6 +55,15 @@ call :CHECK_FILE "%SOURCE_DIR%\PortableSettings.h" "PortableSettings.h"
 if errorlevel 1 exit /b 1
 call :CHECK_FILE "%SOURCE_DIR%\PortableSettings.cpp" "PortableSettings.cpp"
 if errorlevel 1 exit /b 1
+
+echo.
+echo Clearing the generated build folder to prevent stale JUCE caches...
+if exist "%BUILD_DIR%\NUL" rmdir /S /Q "%BUILD_DIR%"
+if exist "%BUILD_DIR%\NUL" (
+    call :FAIL "The existing build folder could not be removed." "Close programs using the build folder, then run - Build.bat again."
+    exit /b 1
+)
+echo - PASS: Generated build folder is ready for a fresh JUCE 9.0.4 configuration.
 
 echo.
 echo Configuring x64 Release project...
@@ -99,15 +108,20 @@ if errorlevel 1 (
 
 set "UNEXPECTED_DIST_ITEMS="
 for /F "delims=" %%F in ('dir /B /A "%DIST_DIR%" 2^>nul') do (
-    if /I not "%%F"=="TapeStopper.vst3" if /I not "%%F"=="Data" set "UNEXPECTED_DIST_ITEMS=!UNEXPECTED_DIST_ITEMS! %%F"
+    if /I not "%%F"=="TapeStopper.vst3" if /I not "%%F"=="TapeStopper.rar" if /I not "%%F"=="Data" if /I not "%%F"=="TapeStopper_Data" set "UNEXPECTED_DIST_ITEMS=!UNEXPECTED_DIST_ITEMS! %%F"
 )
 if defined UNEXPECTED_DIST_ITEMS (
-    call :FAIL "Unexpected item(s) were found in dist:!UNEXPECTED_DIST_ITEMS!" "Only TapeStopper.vst3 and an optional Data folder."
+    call :FAIL "Unexpected item(s) were found in dist:!UNEXPECTED_DIST_ITEMS!" "TapeStopper.vst3, TapeStopper.rar, TapeStopper_Data and a legacy Data folder awaiting migration."
     exit /b 1
 )
 
 if exist "%DIST_DIR%\Data" if not exist "%DIST_DIR%\Data\" (
-    call :FAIL "dist\Data exists but is not a folder." "An optional writable Data folder."
+    call :FAIL "dist\Data exists but is not a folder." "A legacy writable Data folder awaiting migration."
+    exit /b 1
+)
+
+if exist "%DIST_DIR%\TapeStopper_Data" if not exist "%DIST_DIR%\TapeStopper_Data\" (
+    call :FAIL "dist\TapeStopper_Data exists but is not a folder." "An optional writable TapeStopper_Data folder."
     exit /b 1
 )
 
@@ -127,7 +141,7 @@ echo - PASS: Portable single-file VST3 created.
 echo - PASS: Final file validated as Windows x64 PE.
 echo - PASS: dist contains only allowed items.
 echo - OUTPUT: %FINAL_OUTPUT%
-echo - NOTE: Stage 11.6 adds the expanded sequencer and slider triplet timings.
+echo - NOTE: TapeStopper v1.42 uses JUCE 9.0.4.
 exit /b 0
 
 :CHECK_FILE

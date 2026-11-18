@@ -1,24 +1,24 @@
 cmake_minimum_required(VERSION 3.25)
 
-project(TapeStopper VERSION 1.40 LANGUAGES C CXX)
+project(TapeStopper VERSION 1.42 LANGUAGES C CXX)
 
-set(JUCE_DIR "${CMAKE_CURRENT_LIST_DIR}/../../_Tools/JUCE/_8.0.15")
+set(JUCE_DIR "${CMAKE_CURRENT_LIST_DIR}/../../_Tools/JUCE/_9.0.4")
 
 if(NOT EXISTS "${JUCE_DIR}/CMakeLists.txt")
-    message(FATAL_ERROR "JUCE 8.0.15 was not found at: ${JUCE_DIR}")
+    message(FATAL_ERROR "JUCE 9.0.4 was not found at: ${JUCE_DIR}")
 endif()
 
 add_subdirectory("${JUCE_DIR}" "${CMAKE_BINARY_DIR}/JUCE")
 
 juce_add_plugin(TapeStopper
-    VERSION 1.40
+    VERSION 1.42
     COMPANY_NAME "sl23"
     BUNDLE_ID "com.sl23.tapestopper"
     PLUGIN_MANUFACTURER_CODE sl23
     PLUGIN_CODE TpSt
     FORMATS VST3
     PRODUCT_NAME "TapeStopper"
-    DESCRIPTION "TapeStopper Stage 11.6 expanded triplet timings"
+    DESCRIPTION "TapeStopper v1.42 built with JUCE 9.0.4"
     IS_SYNTH FALSE
     NEEDS_MIDI_INPUT FALSE
     NEEDS_MIDI_OUTPUT FALSE

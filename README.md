@@ -1,13 +1,13 @@
 # TapeStopper
 
-<div align="center">
-
 [![Release](https://img.shields.io/github/v/release/sl2365/TapeStopper?style=for-the-badge-square&logo=github&logoColor=white&color=purple)](https://github.com/sl2365/TapeStopper/releases/latest/download/TapeStopper.rar)
 [![Release Date](https://img.shields.io/github/release-date/sl2365/TapeStopper?style=for-the-badge-square&logo=github&logoColor=white&color=yellow)](https://github.com/sl2365/TapeStopper/releases)
+
 [![Latest Asset Downloads](https://img.shields.io/github/downloads/sl2365/TapeStopper/latest/TapeStopper.rar?style=for-the-badge-square&logo=github&logoColor=white&label=downloads-latest&displayAssetName=false&color=blue)](https://github.com/sl2365/TapeStopper/releases/latest)
 [![Total Downloads](https://img.shields.io/github/downloads/sl2365/TapeStopper/total?style=for-the-badge-square&logo=github&logoColor=white&label=downloads-total&color=blue)](https://github.com/sl2365/TapeStopper/releases)
 
-</div>
+[![Commits Since Release](https://img.shields.io/github/commits-since/sl2365/TapeStopper/latest?style=for-the-badge-square&logo=github&logoColor=white&color=green)](https://github.com/sl2365/TapeStopper/activity)
+[![Last Commit](https://img.shields.io/github/last-commit/sl2365/TapeStopper?style=for-the-badge-square&logo=github&logoColor=white&color=green)](https://github.com/sl2365/TapeStopper/activity)
 
 TapeStopper is a portable Windows x64 VST3 audio effect for tape-style slowdown and startup transitions. It combines independently timed DOWN and UP motion with tempo sync, editable Pitch, Filter and Volume curves, a separate global 11-point Envelope, a 64-step Play sequencer, a persistent transition display, saturation, wow, flutter, irregular flux instability, wet/dry mix, threshold muting and portable user presets.
 
@@ -58,7 +58,7 @@ For a detailed description of every control, see [Instructions.ini](Instructions
 
 Alternatively, click `RETRIG` to pulse instantly to stopped speed and recover using the current UP settings, without holding or toggling the main Play button.
 
-For DAW automation, change the `Retrigger` parameter from Off to On to fire it, then return it to Off before the next trigger. `Full Speed Mute` is also exposed as an automatable On/Off parameter while retaining its portable default in `Data\Settings.ini`.
+For DAW automation, change the `Retrigger` parameter from Off to On to fire it, then return it to Off before the next trigger. `Full Speed Mute` is also exposed as an automatable On/Off parameter while retaining its portable default in `TapeStopper_Data\Settings.ini`.
 
 The green DOWN marker and red UP marker can be adjusted only on the timing track. The readout underneath the track is informational and cannot move the markers.
 
@@ -111,15 +111,15 @@ Left-click a sequencer control to move forward through its values and right-clic
 User presets are saved as INI files in:
 
 ```text
-Data\Presets
+TapeStopper_Data\Presets
 ```
 
-The folder is created beside the loaded VST3. Presets store the sound controls, all six simple curves, their enables and amounts, timing choices, direction enables, Play mode, every global Envelope point and the complete sequencer pattern and settings. They do not store the temporary pressed state of the large Play button, the currently displayed graph tab, the open/closed sequencer view or the global Setup options.
+The folder is created beside the loaded VST3. Existing `Data` folders are automatically renamed to `TapeStopper_Data`. Presets store the sound controls, all six simple curves, their enables and amounts, timing choices, direction enables, Play mode, every global Envelope point and the complete sequencer pattern and settings. They do not store the temporary pressed state of the large Play button, the currently displayed graph tab, the open/closed sequencer view or the global Setup options.
 
 Portable editor and Setup options are saved in:
 
 ```text
-Data\Settings.ini
+TapeStopper_Data\Settings.ini
 ```
 
 This stores the editor scale, Full Speed Mute setting, Normal/Reversed button display choice and Waveform display choice. No settings or presets are written to the Windows user profile.
@@ -131,7 +131,7 @@ The supplied build script expects this directory arrangement:
 ```text
 _Projects\TapeStopper\
 _Tools\cmake\_4.4.2\
-_Tools\JUCE\_8.0.15\
+_Tools\JUCE\_9.0.4\
 ```
 
 Visual Studio 18 2026 with the x64 C++ tools is required.
@@ -141,7 +141,7 @@ Visual Studio 18 2026 with the x64 C++ tools is required.
 3. Wait for the build summary to report PASS.
 4. Load `dist\TapeStopper.vst3` in the host.
 
-The build creates a portable single-file Windows x64 VST3 and preserves an existing `dist\Data` folder. It does not install the plug-in elsewhere. Detailed build output is written to `Results.log`.
+The build creates a portable single-file Windows x64 VST3 and preserves `dist\TapeStopper_Data`. A legacy `dist\Data` folder is renamed by the plug-in on first run. It does not install the plug-in elsewhere. Detailed build output is written to `Results.log`.
 
 ## Project files
 
